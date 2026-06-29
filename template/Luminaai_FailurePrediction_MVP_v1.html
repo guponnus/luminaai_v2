@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lumina AI — F02 Failure & Leak Prediction MVP</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:'Segoe UI',Arial,sans-serif;background:#0D1B2A;color:#E0E8F0;font-size:13px;}
+  /* ── Top Nav ── */
+  .top-nav{background:#061526;border-bottom:2px solid #00B4A6;padding:0 24px;display:flex;align-items:center;gap:24px;height:52px;position:sticky;top:0;z-index:999;}
+  .brand{font-size:18px;font-weight:800;color:#00B4A6;letter-spacing:1px;white-space:nowrap;}
+  .brand span{color:#F5C518;}
+  .nav-links{display:flex;gap:4px;flex:1;overflow-x:auto;}
+  .nav-link{padding:6px 10px;border-radius:6px;cursor:pointer;white-space:nowrap;font-size:11px;font-weight:600;color:#90A4B8;border:1px solid transparent;transition:all .2s;}
+  .nav-link:hover,.nav-link.active{background:#00B4A6;color:#fff;border-color:#00B4A6;}
+  .status-bar{font-size:10px;color:#3ECF8E;white-space:nowrap;display:flex;align-items:center;gap:6px;}
+  .pulse{width:8px;height:8px;border-radius:50%;background:#3ECF8E;animation:pulse 1.5s infinite;}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:0.5;transform:scale(0.8);}}
+  /* ── Layout ── */
+  .main{padding:20px 24px;max-width:1600px;margin:0 auto;}
+  .panel{display:none;}
+  .panel.active{display:block;}
+  .panel-header{background:linear-gradient(135deg,#0D2D52,#1A3D6A);border-radius:10px;padding:16px 20px;margin-bottom:16px;border-left:4px solid #00B4A6;}
+  .panel-title{font-size:16px;font-weight:800;color:#E0E8F0;}
+  .panel-sub{font-size:11px;color:#7A9BB5;margin-top:4px;}
+  /* ── KPI Cards ── */
+  .kpi-grid{display:grid;gap:12px;margin-bottom:16px;}
+  .kpi-3{grid-template-columns:repeat(3,1fr);}
+  .kpi-4{grid-template-columns:repeat(4,1fr);}
+  .kpi-5{grid-template-columns:repeat(5,1fr);}
+  .kpi-card{background:#0F2035;border-radius:10px;padding:14px 16px;border:1px solid #1A3D6A;text-align:center;position:relative;overflow:hidden;}
+  .kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--accent,#00B4A6);}
+  .kpi-value{font-size:28px;font-weight:800;color:var(--accent,#00B4A6);line-height:1;}
+  .kpi-label{font-size:10px;color:#7A9BB5;margin-top:4px;text-transform:uppercase;letter-spacing:.5px;}
+  .kpi-sub{font-size:11px;color:#A0B8CC;margin-top:2px;}
+  /* ── Charts ── */
+  .chart-grid{display:grid;gap:12px;margin-bottom:16px;}
+  .chart-2{grid-template-columns:repeat(2,1fr);}
+  .chart-3{grid-template-columns:repeat(3,1fr);}
+  .chart-2-1{grid-template-columns:2fr 1fr;}
+  .chart-1-2{grid-template-columns:1fr 2fr;}
+  .chart-box{background:#0F2035;border-radius:10px;padding:16px;border:1px solid #1A3D6A;}
+  .chart-box.full{grid-column:1/-1;}
+  .chart-title{font-size:11px;font-weight:700;color:#A0B8CC;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;display:flex;align-items:center;gap:6px;}
+  .chart-title::before{content:'';width:3px;height:12px;background:#00B4A6;border-radius:2px;}
+  .chart-wrap{position:relative;height:180px;}
+  .chart-wrap.tall{height:240px;}
+  /* ── Tables ── */
+  .table-box{background:#0F2035;border-radius:10px;padding:16px;border:1px solid #1A3D6A;margin-bottom:16px;overflow-x:auto;}
+  .tbl{width:100%;border-collapse:collapse;font-size:11px;}
+  .tbl th{background:#0D2D52;color:#A0B8CC;padding:7px 8px;text-align:left;font-weight:700;border-bottom:1px solid #1A3D6A;white-space:nowrap;}
+  .tbl td{padding:6px 8px;border-bottom:1px solid #0D1B2A;color:#C8D8E8;white-space:nowrap;}
+  .tbl tr:hover td{background:#142840;}
+  .badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;color:#fff;}
+  /* ── Map ── */
+  #flp-map{height:340px;border-radius:10px;overflow:hidden;}
+  /* ── Section separator ── */
+  .section-sep{height:1px;background:#1A3D6A;margin:16px 0;}
+  /* ── Cross-ref badge ── */
+  .xref{background:#0D2D52;border:1px solid #00B4A6;border-radius:6px;padding:8px 12px;font-size:11px;color:#7FFFCF;display:inline-block;margin:4px;}
+  .xref strong{color:#00B4A6;}
+  .xref-box{margin-bottom:16px;}
+  /* ── Heat zone pills ── */
+  .hz-red{background:#E53E3E;color:#fff;border-radius:4px;padding:2px 6px;font-size:10px;font-weight:700;}
+  .hz-amber{background:#ED8936;color:#fff;border-radius:4px;padding:2px 6px;font-size:10px;font-weight:700;}
+  .hz-green{background:#3ECF8E;color:#fff;border-radius:4px;padding:2px 6px;font-size:10px;font-weight:700;}
+  /* ── Footer ── */
+  .footer{text-align:center;padding:20px;color:#3A5A7A;font-size:10px;border-top:1px solid #1A3D6A;margin-top:24px;}
+</style>
+</head>
+<body>
+<div class="top-nav">
+  <div class="brand">Lumina <span>AI</span></div>
+  <div class="nav-links">
+    <div class="nav-link active" onclick="showPanel('pA',this)">A · Alert Centre</div>
+    <div class="nav-link" onclick="showPanel('pB',this)">B · Anomaly Workbench</div>
+    <div class="nav-link" onclick="showPanel('pC',this)">C · ML Performance</div>
+    <div class="nav-link" onclick="showPanel('pD',this)">D · Heat Map</div>
+    <div class="nav-link" onclick="showPanel('pE',this)">E · Incident Timeline</div>
+    <div class="nav-link" onclick="showPanel('pF',this)">F · Risk Queue</div>
+    <div class="nav-link" onclick="showPanel('pG',this)">G · Failure Trends</div>
+    <div class="nav-link" onclick="showPanel('pH',this)">H · Lead-Time</div>
+    <div class="nav-link" onclick="showPanel('pI',this)">I · Cost Avoidance</div>
+  </div>
+  <div class="status-bar"><div class="pulse"></div>LIVE · F02 Failure &amp; Leak Prediction · 1,000 Records/Panel</div>
+</div>
+
+<div class="main">
+
+<!-- ═══════════════════════════════════════════════════════════ PANEL A ══ -->
+<div class="panel active" id="pA">
+  <div class="panel-header">
+    <div class="panel-title">A — PREDICTION ALERT COMMAND CENTRE</div>
+    <div class="panel-sub">Active failure predictions · Anomaly confidence · TTF countdown · 1-click dispatch · Cross-ref: F01 Asset Health</div>
+  </div>
+
+  <div class="xref-box">
+    <span class="xref"><strong>F01 Link:</strong> Health_Score · RUL_Months · Risk_Score pulled per Asset_ID</span>
+    <span class="xref"><strong>F03 Link:</strong> WO_ID · Crew · SLA_Priority from Field Safety Work Orders</span>
+    <span class="xref"><strong>Dataset:</strong> 1,000 alerts · 160 Critical · 348 High</span>
+  </div>
+
+  <div class="kpi-grid kpi-5">
+    <div class="kpi-card" style="--accent:#E53E3E"><div class="kpi-value">160</div><div class="kpi-label">Critical Alerts</div><div class="kpi-sub">Failure Prob &gt;70%</div></div>
+    <div class="kpi-card" style="--accent:#ED8936"><div class="kpi-value">348</div><div class="kpi-label">High Priority</div><div class="kpi-sub">Failure Prob 45–70%</div></div>
+    <div class="kpi-card" style="--accent:#00B4A6"><div class="kpi-value">40.4%</div><div class="kpi-label">Avg AI Confidence</div><div class="kpi-sub">LSTM × Isolation Forest</div></div>
+    <div class="kpi-card" style="--accent:#3ECF8E"><div class="kpi-value">36.1%</div><div class="kpi-label">Dispatch Rate</div><div class="kpi-sub">Auto-dispatched alerts</div></div>
+    <div class="kpi-card" style="--accent:#1A8FE3"><div class="kpi-value">1,000</div><div class="kpi-label">Total Alerts</div><div class="kpi-sub">Active monitoring</div></div>
+  </div>
+
+  <div class="chart-grid chart-3">
+    <div class="chart-box"><div class="chart-title">Alert Severity Distribution</div><div class="chart-wrap"><canvas id="aSevChart"></canvas></div></div>
+    <div class="chart-box"><div class="chart-title">TTF Category Breakdown</div><div class="chart-wrap"><canvas id="aTtfChart"></canvas></div></div>
+    <div class="chart-box"><div class="chart-title">Dispatch Status</div><div class="chart-wrap"><canvas id="aDispChart"></canvas></div></div>
+  </div>
+
+  <div class="chart-title" style="padding:0 0 8px 0;">Top 10 Alerts by Failure Probability (F01 Cross-Referenced)</div>
+  <div class="table-box">
+    <table class="tbl">
+      <thead><tr>
+        <th>Alert ID</th><th>Asset ID</th><th>Asset Type</th><th>Zone</th>
+        <th>Severity</th><th>Fail Prob%</th><th>TTF Hours</th><th>TTF Cat</th>
+        <th>Root Cause</th><th>Dispatch</th>
+      </tr></thead>
+      <tbody><tr>
+      <td>ALT-F02-0037</td><td>AST-LVC-0037</td><td>LV Cable</td>
+      <td>Al Dhafra</td>
+      <td><span class="badge" style="background:#E53E3E">Critical</span></td>
+      <td style="font-weight:700;color:#E53E3E">98%</td>
+      <td>1h</td><td>< 24h</td>
+      <td>Cable Fault</td>
+      <td><span class="badge" style="background:#ED8936">Pending</span></td>
+    </tr><tr>
+      <td>ALT-F02-0710</td><td>AST-CAP-0710</td><td>Capacitor Bank</td>
+      <td>Al Qusais</td>
+      <td><span class="badge" style="background:#E53E3E">Critical</span></td>
+      <td style="font-weight:700;color:#E53E3E">98%</td>
+      <td>1h</td><td>< 24h</td>
+      <td>Corrosion Failure</td>
+      <td><span class="badge" style="background:#3ECF8E">Dispatched</span></td>
+    </tr><tr>
+      <td>ALT-F02-0858</td><td>AST-PMT-0858</td><td>Pole-Mounted Transformer</td>
+      <td>Al Mankhool</td>
+      <td><span class="badge" style="background:#E53E3E">Critical</span></td>
+      <td style="font-weight:700;color:#E53E3E">96.1%</td>
+      <td>207h</td><td>> 7 days</td>
+      <td>Partial Discharge</td>
+      <td><span class="badge" style="background:#3ECF8E">Dispatched</span></td>
+    </tr><tr>
+      <td>ALT-F02-0323</td><td>AST-OHL-0323</td><td>Overhead Line</td>
+      <td>Al Mamzar</td>
+      <td><span class="badge" style="background:#E53E3E">Critical</span></td>
+      <td style="font-weight:700;color:#E53E3E">91.0%</td>
+      <td>171h</td><td>> 7 days</td>
+      <td>Busbar Failure</td>
+      <td><span class="badge" style="background:#3ECF8E">Dispatched</span></td>
+    </tr><tr>
+      <td>ALT-F02-0453</td><td>AST-UGC-0453</td><td>Underground Cable</td>
+      <td>Al Warqa</td>
+      <td><span class="badge" style="background:#E53E3E">Critical</span></td>
+      <td style="font-weight:700;color:#E53E3E">85.6%</td>
+      <td>477h</td><td>> 7 days</td>
+      <td>Transformer Oil Leak</td>
+      <td><span class="badge" style="background:#ED8936">Pending</span></td>
+    </tr><tr>
+      <td>ALT-F02-0464</td><td>AST-UGC-0464</td><td>Underground Cable</td>
+      <td>Al Ghusais</td>
+      <td><span class="badge" style="background:#E53E3E">Critical</span></td>
+      <td style="font-weight:700;color:#E53E3E">80.8%</td>
+      <td>1101h</td><td>> 7 days</td>
+      <td>Bushing Failure</td>
+      <td><span class="badge" style="background:#3ECF8E">Dispatched</span></td>
+    </tr><tr>
+      <td>ALT-F02-0859</td><td>AST-OHL-0859</td><td>Overhead Line</td>
+      <td>Nad Al Sheba</td>
+      <td><span class="badge" style="background:#E53E3E">Critical</span></td>
+      <td style="font-weight:700;color:#E53E3E">78.7%</td>
+      <td>473h</td><td>> 7 days</td>
+      <td>Bushing Failure</td>
+      <td><span class="badge" style="background:#3ECF8E">Dispatched</span></td>
+    </tr><tr>
+      <td>ALT-F02-0133</td><td>AST-CB-0133</td><td>Circuit Breaker</td>
+      <td>Al Rashidiya</td>
+      <td><span class="badge" style="background:#E53E3E">Critical</span></td>
+      <td style="font-weight:700;color:#E53E3E">72.2%</td>
+      <td>6h</td><td>< 24h</td>
+      <td>Transformer Oil Leak</td>
+      <td><span class="badge" style="background:#3ECF8E">Dispatched</span></td>
+    </tr><tr>
+      <td>ALT-F02-0497</td><td>AST-DT-0497</td><td>Distribution Transformer</td>
+      <td>Jebel Ali</td>
+      <td><span class="badge" style="background:#E53E3E">Critical</span></td>
+      <td style="font-weight:700;color:#E53E3E">72.1%</td>
+      <td>443h</td><td>> 7 days</td>
+      <td>Winding Short</td>
+      <td><span class="badge" style="background:#3ECF8E">Dispatched</span></td>
+    </tr><tr>
+      <td>ALT-F02-0886</td><td>AST-DT-0886</td><td>Distribution Transformer</td>
+      <td>Al Quoz</td>
+      <td><span class="badge" style="background:#E53E3E">Critical</span></td>
+      <td style="font-weight:700;color:#E53E3E">71.6%</td>
+      <td>1306h</td><td>> 7 days</td>
+      <td>Bushing Failure</td>
+      <td><span class="badge" style="background:#3ECF8E">Dispatched</span></td>
+    </tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ PANEL B ══ -->
+<div class="panel" id="pB">
+  <div class="panel-header">
+    <div class="panel-title">B — UNIFIED ANOMALY WORKBENCH</div>
+    <div class="panel-sub">Power / Water / Gas sensor stream · Deviation from baseline · ML confidence scoring · 1,000 readings</div>
+  </div>
+
+  <div class="kpi-grid kpi-4">
+    <div class="kpi-card" style="--accent:#E53E3E"><div class="kpi-value">252</div><div class="kpi-label">Anomalies Detected</div><div class="kpi-sub">of 1,000 readings</div></div>
+    <div class="kpi-card" style="--accent:#ED8936"><div class="kpi-value">25.2%</div><div class="kpi-label">Anomaly Rate</div><div class="kpi-sub">Exceeds baseline threshold</div></div>
+    <div class="kpi-card" style="--accent:#00B4A6"><div class="kpi-value">3</div><div class="kpi-label">Utility Types</div><div class="kpi-sub">Power · Water · Gas</div></div>
+    <div class="kpi-card" style="--accent:#3ECF8E"><div class="kpi-value">6+</div><div class="kpi-label">Sensor Categories</div><div class="kpi-sub">DGA · PD · Pressure · Flow</div></div>
+  </div>
+
+  <div class="chart-grid chart-2-1">
+    <div class="chart-box"><div class="chart-title">Anomalies by Utility Type</div><div class="chart-wrap"><canvas id="bUtilChart"></canvas></div></div>
+    <div class="chart-box"><div class="chart-title">Top 5 Anomalous Sensor Types</div><div class="chart-wrap"><canvas id="bSensorChart"></canvas></div></div>
+  </div>
+
+  <div class="chart-title" style="padding:0 0 8px 0;">Recent Anomaly Stream (Latest Detections)</div>
+  <div class="table-box">
+    <table class="tbl">
+      <thead><tr>
+        <th>Reading ID</th><th>Asset ID</th><th>Utility</th><th>Sensor</th>
+        <th>Reading</th><th>Baseline</th><th>Deviation%</th><th>Anomaly Score</th><th>Trend</th>
+      </tr></thead>
+      <tbody><tr>
+      <td>SNS-F02-0001</td><td>AST-FP-0838</td><td>Power</td>
+      <td>Vibration</td><td style="color:#E53E3E;font-weight:700">1.313 mm/s</td>
+      <td>1.0</td><td style="color:#ED8936">31.3%</td>
+      <td>76.1</td><td>Rising</td>
+    </tr><tr>
+      <td>SNS-F02-0008</td><td>AST-OHL-0397</td><td>Power</td>
+      <td>Pressure</td><td style="color:#E53E3E;font-weight:700">7.644 bar</td>
+      <td>5.5</td><td style="color:#ED8936">39.0%</td>
+      <td>67.0</td><td>Rising</td>
+    </tr><tr>
+      <td>SNS-F02-0009</td><td>AST-PMT-0035</td><td>Power</td>
+      <td>Pressure</td><td style="color:#E53E3E;font-weight:700">6.405 bar</td>
+      <td>5.5</td><td style="color:#ED8936">16.5%</td>
+      <td>83.0</td><td>Rising</td>
+    </tr><tr>
+      <td>SNS-F02-0010</td><td>WAT-PIPE-0125</td><td>Water</td>
+      <td>NRW Index</td><td style="color:#E53E3E;font-weight:700">23.775 %</td>
+      <td>18</td><td style="color:#ED8936">32.1%</td>
+      <td>75.7</td><td>Rising</td>
+    </tr><tr>
+      <td>SNS-F02-0011</td><td>AST-FP-0494</td><td>Power</td>
+      <td>Pressure</td><td style="color:#E53E3E;font-weight:700">6.561 bar</td>
+      <td>5.5</td><td style="color:#ED8936">19.3%</td>
+      <td>66.7</td><td>Rising</td>
+    </tr><tr>
+      <td>SNS-F02-0013</td><td>AST-CAP-0671</td><td>Power</td>
+      <td>Load Current</td><td style="color:#E53E3E;font-weight:700">419.562 A</td>
+      <td>350</td><td style="color:#ED8936">19.9%</td>
+      <td>62.3</td><td>Rising</td>
+    </tr><tr>
+      <td>SNS-F02-0017</td><td>AST-RMU-0370</td><td>Power</td>
+      <td>Pressure</td><td style="color:#E53E3E;font-weight:700">6.513 bar</td>
+      <td>5.5</td><td style="color:#ED8936">18.4%</td>
+      <td>85.0</td><td>Rising</td>
+    </tr><tr>
+      <td>SNS-F02-0027</td><td>AST-UGC-0274</td><td>Power</td>
+      <td>Oil Temp</td><td style="color:#E53E3E;font-weight:700">116.868 C</td>
+      <td>85</td><td style="color:#ED8936">37.5%</td>
+      <td>70.1</td><td>Rising</td>
+    </tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ PANEL C ══ -->
+<div class="panel" id="pC">
+  <div class="panel-header">
+    <div class="panel-title">C — ML MODEL PERFORMANCE DASHBOARD</div>
+    <div class="panel-sub">F1 · Precision · Recall · AUC-ROC · Concept drift monitoring · Retraining status · 1,000 evaluations</div>
+  </div>
+
+  <div class="kpi-grid kpi-4">
+    <div class="kpi-card" style="--accent:#00B4A6"><div class="kpi-value">0.83</div><div class="kpi-label">Avg F1 Score</div><div class="kpi-sub">Harmonic mean P×R</div></div>
+    <div class="kpi-card" style="--accent:#3ECF8E"><div class="kpi-value">0.84</div><div class="kpi-label">Avg Precision</div><div class="kpi-sub">TP/(TP+FP)</div></div>
+    <div class="kpi-card" style="--accent:#1A8FE3"><div class="kpi-value">0.82</div><div class="kpi-label">Avg Recall</div><div class="kpi-sub">TP/(TP+FN)</div></div>
+    <div class="kpi-card" style="--accent:#ED8936"><div class="kpi-value">352</div><div class="kpi-label">Drift Alerts</div><div class="kpi-sub">Retraining triggered</div></div>
+  </div>
+
+  <div class="chart-grid chart-2">
+    <div class="chart-box"><div class="chart-title">Average F1 Score by ML Model</div><div class="chart-wrap"><canvas id="cModelChart"></canvas></div></div>
+    <div class="chart-box"><div class="chart-title">F1 Score Trend (Last 12 Months)</div><div class="chart-wrap"><canvas id="cTrendChart"></canvas></div></div>
+  </div>
+
+  <div class="chart-grid chart-3" style="margin-top:0;">
+    <div class="chart-box full">
+      <div class="chart-title">Model Comparison — F1 vs Drift Score</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;padding:8px 0;">
+        <div style="background:#0D2D52;border-radius:8px;padding:12px;border-left:3px solid #E53E3E">
+          <div style="font-size:11px;font-weight:700;color:#A0B8CC;margin-bottom:8px">Isolation Forest v2.1</div>
+          <div style="display:flex;justify-content:space-between">
+            <div><div style="font-size:20px;font-weight:800;color:#3ECF8E">0.81</div><div style="font-size:9px;color:#7A9BB5">F1</div></div>
+            <div><div style="font-size:20px;font-weight:800;color:#1A8FE3">0.84</div><div style="font-size:9px;color:#7A9BB5">Precision</div></div>
+            <div><div style="font-size:20px;font-weight:800;color:#00B4A6">0.82</div><div style="font-size:9px;color:#7A9BB5">Recall</div></div>
+          </div>
+        </div><div style="background:#0D2D52;border-radius:8px;padding:12px;border-left:3px solid #00B4A6">
+          <div style="font-size:11px;font-weight:700;color:#A0B8CC;margin-bottom:8px">Autoencoder v2.0</div>
+          <div style="display:flex;justify-content:space-between">
+            <div><div style="font-size:20px;font-weight:800;color:#3ECF8E">0.83</div><div style="font-size:9px;color:#7A9BB5">F1</div></div>
+            <div><div style="font-size:20px;font-weight:800;color:#1A8FE3">0.84</div><div style="font-size:9px;color:#7A9BB5">Precision</div></div>
+            <div><div style="font-size:20px;font-weight:800;color:#00B4A6">0.82</div><div style="font-size:9px;color:#7A9BB5">Recall</div></div>
+          </div>
+        </div><div style="background:#0D2D52;border-radius:8px;padding:12px;border-left:3px solid #F5C518">
+          <div style="font-size:11px;font-weight:700;color:#A0B8CC;margin-bottom:8px">Prophet-STL v1.9</div>
+          <div style="display:flex;justify-content:space-between">
+            <div><div style="font-size:20px;font-weight:800;color:#3ECF8E">0.79</div><div style="font-size:9px;color:#7A9BB5">F1</div></div>
+            <div><div style="font-size:20px;font-weight:800;color:#1A8FE3">0.84</div><div style="font-size:9px;color:#7A9BB5">Precision</div></div>
+            <div><div style="font-size:20px;font-weight:800;color:#00B4A6">0.82</div><div style="font-size:9px;color:#7A9BB5">Recall</div></div>
+          </div>
+        </div><div style="background:#0D2D52;border-radius:8px;padding:12px;border-left:3px solid #E53E3E">
+          <div style="font-size:11px;font-weight:700;color:#A0B8CC;margin-bottom:8px">XGBoost Ensemble v1.4</div>
+          <div style="display:flex;justify-content:space-between">
+            <div><div style="font-size:20px;font-weight:800;color:#3ECF8E">0.84</div><div style="font-size:9px;color:#7A9BB5">F1</div></div>
+            <div><div style="font-size:20px;font-weight:800;color:#1A8FE3">0.84</div><div style="font-size:9px;color:#7A9BB5">Precision</div></div>
+            <div><div style="font-size:20px;font-weight:800;color:#00B4A6">0.82</div><div style="font-size:9px;color:#7A9BB5">Recall</div></div>
+          </div>
+        </div><div style="background:#0D2D52;border-radius:8px;padding:12px;border-left:3px solid #00B4A6">
+          <div style="font-size:11px;font-weight:700;color:#A0B8CC;margin-bottom:8px">LSTM-Seq2Seq v3.2</div>
+          <div style="display:flex;justify-content:space-between">
+            <div><div style="font-size:20px;font-weight:800;color:#3ECF8E">0.87</div><div style="font-size:9px;color:#7A9BB5">F1</div></div>
+            <div><div style="font-size:20px;font-weight:800;color:#1A8FE3">0.84</div><div style="font-size:9px;color:#7A9BB5">Precision</div></div>
+            <div><div style="font-size:20px;font-weight:800;color:#00B4A6">0.82</div><div style="font-size:9px;color:#7A9BB5">Recall</div></div>
+          </div>
+        </div><div style="background:#0D2D52;border-radius:8px;padding:12px;border-left:3px solid #F5C518">
+          <div style="font-size:11px;font-weight:700;color:#A0B8CC;margin-bottom:8px">Random Forest v3.1</div>
+          <div style="display:flex;justify-content:space-between">
+            <div><div style="font-size:20px;font-weight:800;color:#3ECF8E">0.82</div><div style="font-size:9px;color:#7A9BB5">F1</div></div>
+            <div><div style="font-size:20px;font-weight:800;color:#1A8FE3">0.84</div><div style="font-size:9px;color:#7A9BB5">Precision</div></div>
+            <div><div style="font-size:20px;font-weight:800;color:#00B4A6">0.82</div><div style="font-size:9px;color:#7A9BB5">Recall</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ PANEL D ══ -->
+<div class="panel" id="pD">
+  <div class="panel-header">
+    <div class="panel-title">D — FAILURE PROBABILITY HEAT MAP</div>
+    <div class="panel-sub">Geographic risk overlay · Red/Amber/Green heat zones · Historical failure clustering · F01 Health Score cross-reference</div>
+  </div>
+
+  <div class="xref-box">
+    <span class="xref"><strong>F01 Cross-Ref:</strong> Health_Score · Risk_Score · Health_Status per Asset_ID</span>
+    <span class="xref"><strong>F02 Alert_ID</strong> linked for drill-down</span>
+  </div>
+
+  <div class="kpi-grid kpi-3" style="margin-bottom:12px;">
+    <div class="kpi-card" style="--accent:#E53E3E"><div class="kpi-value">514</div><div class="kpi-label">Red Zone Assets</div><div class="kpi-sub">Failure Prob &gt; 60%</div></div>
+    <div class="kpi-card" style="--accent:#ED8936"><div class="kpi-value">187</div><div class="kpi-label">Amber Zone Assets</div><div class="kpi-sub">Failure Prob 35–60%</div></div>
+    <div class="kpi-card" style="--accent:#3ECF8E"><div class="kpi-value">299</div><div class="kpi-label">Green Zone Assets</div><div class="kpi-sub">Failure Prob &lt; 35%</div></div>
+  </div>
+
+  <div class="chart-grid chart-2">
+    <div class="chart-box">
+      <div class="chart-title">Heat Zone Distribution</div>
+      <div class="chart-wrap"><canvas id="dHzChart"></canvas></div>
+    </div>
+    <div class="chart-box">
+      <div class="chart-title">Top 8 Hottest Zones (Avg Heat Score)</div>
+      <div class="chart-wrap"><canvas id="dZoneChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="chart-box" style="margin-bottom:16px;">
+    <div class="chart-title">Geographic Asset Risk Map — Top 40 Highest-Risk Assets</div>
+    <div id="flp-map"></div>
+    <div style="display:flex;gap:12px;margin-top:8px;font-size:10px;">
+      <span><span class="hz-red">●</span> Red — Failure Prob &gt;60%</span>
+      <span><span class="hz-amber">●</span> Amber — 35–60%</span>
+      <span><span class="hz-green">●</span> Green — &lt;35%</span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ PANEL E ══ -->
+<div class="panel" id="pE">
+  <div class="panel-header">
+    <div class="panel-title">E — INCIDENT TIMELINE & ROOT CAUSE ANALYZER</div>
+    <div class="panel-sub">Chronological ML event log · Root cause attribution · MTTR by severity · F01 risk cross-reference · 1,000 incidents</div>
+  </div>
+
+  <div class="kpi-grid kpi-4">
+    <div class="kpi-card" style="--accent:#00B4A6"><div class="kpi-value">14.9h</div><div class="kpi-label">Avg MTTR</div><div class="kpi-sub">Mean time to restore</div></div>
+    <div class="kpi-card" style="--accent:#3ECF8E"><div class="kpi-value">790</div><div class="kpi-label">Resolved Incidents</div><div class="kpi-sub">of 1,000 total</div></div>
+    <div class="kpi-card" style="--accent:#1A8FE3"><div class="kpi-value">79.0%</div><div class="kpi-label">Resolution Rate</div><div class="kpi-sub">Within SLA target</div></div>
+    <div class="kpi-card" style="--accent:#ED8936"><div class="kpi-value">249</div><div class="kpi-label">High Incidents</div><div class="kpi-sub">Highest urgency</div></div>
+  </div>
+
+  <div class="chart-grid chart-3">
+    <div class="chart-box"><div class="chart-title">Incidents by Severity</div><div class="chart-wrap"><canvas id="eSevChart"></canvas></div></div>
+    <div class="chart-box"><div class="chart-title">Avg MTTR by Severity (Hours)</div><div class="chart-wrap"><canvas id="eMttrChart"></canvas></div></div>
+    <div class="chart-box"><div class="chart-title">Top 5 Root Cause Sensors</div><div class="chart-wrap"><canvas id="eRcChart"></canvas></div></div>
+  </div>
+
+  <div class="chart-title" style="padding:0 0 8px 0;">Top 10 Incidents by MTTR (Longest Resolution)</div>
+  <div class="table-box">
+    <table class="tbl">
+      <thead><tr>
+        <th>ID</th><th>Asset ID</th><th>Type</th><th>Zone</th><th>Severity</th>
+        <th>Incident Type</th><th>Date</th><th>ML Lead (h)</th><th>MTTR (h)</th>
+        <th>Root Cause Sensor</th><th>Status</th>
+      </tr></thead>
+      <tbody><tr>
+      <td>INC-F02-0448</td><td>AST-FP-0130</td><td>Feeder Pillar</td>
+      <td>Mushrif</td>
+      <td><span class="badge" style="background:#3ECF8E">Low</span></td>
+      <td>Cable Fault</td><td>15/12/2024</td>
+      <td>21.4h</td><td style="font-weight:700">32.1h</td>
+      <td>Cooling Fan Current (A)</td>
+      <td><span class="badge" style="background:#3ECF8E">Resolved</span></td>
+    </tr><tr>
+      <td>INC-F02-0528</td><td>AST-PMT-0727</td><td>Pole-Mounted Transformer</td>
+      <td>Al Barsha</td>
+      <td><span class="badge" style="background:#3ECF8E">Low</span></td>
+      <td>Insulation Breakdown</td><td>28/03/2026</td>
+      <td>48.1h</td><td style="font-weight:700">32.0h</td>
+      <td>DGA H2 (ppm)</td>
+      <td><span class="badge" style="background:#3ECF8E">Resolved</span></td>
+    </tr><tr>
+      <td>INC-F02-0602</td><td>AST-MVC-0056</td><td>MV Cable</td>
+      <td>Al Murabba</td>
+      <td><span class="badge" style="background:#3ECF8E">Low</span></td>
+      <td>Cooling Failure</td><td>04/09/2025</td>
+      <td>27.0h</td><td style="font-weight:700">31.6h</td>
+      <td>Load Current (A)</td>
+      <td><span class="badge" style="background:#3ECF8E">Resolved</span></td>
+    </tr><tr>
+      <td>INC-F02-0745</td><td>AST-SW-0678</td><td>Switchgear Panel</td>
+      <td>Al Barsha South</td>
+      <td><span class="badge" style="background:#3ECF8E">Low</span></td>
+      <td>SF6 Leak</td><td>22/05/2025</td>
+      <td>46.3h</td><td style="font-weight:700">31.0h</td>
+      <td>Insulation Resistance (MOhm)</td>
+      <td><span class="badge" style="background:#3ECF8E">Resolved</span></td>
+    </tr><tr>
+      <td>INC-F02-0533</td><td>AST-OHL-0913</td><td>Overhead Line</td>
+      <td>Al Mamzar</td>
+      <td><span class="badge" style="background:#3ECF8E">Low</span></td>
+      <td>Arc Flash</td><td>03/04/2025</td>
+      <td>92.9h</td><td style="font-weight:700">30.9h</td>
+      <td>DGA C2H2 (ppm)</td>
+      <td><span class="badge" style="background:#3ECF8E">Resolved</span></td>
+    </tr><tr>
+      <td>INC-F02-0487</td><td>AST-UGC-0116</td><td>Underground Cable</td>
+      <td>Al Karama</td>
+      <td><span class="badge" style="background:#3ECF8E">Low</span></td>
+      <td>Overcurrent Trip</td><td>22/06/2025</td>
+      <td>21.1h</td><td style="font-weight:700">30.1h</td>
+      <td>Partial Discharge (pC)</td>
+      <td><span class="badge" style="background:#3ECF8E">Resolved</span></td>
+    </tr><tr>
+      <td>INC-F02-0264</td><td>AST-RMU-0359</td><td>Ring Main Unit</td>
+      <td>Al Mankhool</td>
+      <td><span class="badge" style="background:#3ECF8E">Low</span></td>
+      <td>Arc Flash</td><td>27/09/2024</td>
+      <td>14.6h</td><td style="font-weight:700">30.0h</td>
+      <td>Cooling Fan Current (A)</td>
+      <td><span class="badge" style="background:#3ECF8E">Resolved</span></td>
+    </tr><tr>
+      <td>INC-F02-0501</td><td>AST-FP-0297</td><td>Feeder Pillar</td>
+      <td>Al Mizhar</td>
+      <td><span class="badge" style="background:#3ECF8E">Low</span></td>
+      <td>Arc Flash</td><td>24/01/2026</td>
+      <td>17.3h</td><td style="font-weight:700">30.0h</td>
+      <td>Flow Rate</td>
+      <td><span class="badge" style="background:#3ECF8E">Resolved</span></td>
+    </tr><tr>
+      <td>INC-F02-0203</td><td>AST-PT-0147</td><td>Power Transformer</td>
+      <td>Al Ghusais</td>
+      <td><span class="badge" style="background:#3ECF8E">Low</span></td>
+      <td>Relay Malfunction</td><td>17/09/2024</td>
+      <td>4.4h</td><td style="font-weight:700">29.9h</td>
+      <td>DGA C2H2 (ppm)</td>
+      <td><span class="badge" style="background:#3ECF8E">Resolved</span></td>
+    </tr><tr>
+      <td>INC-F02-0768</td><td>AST-MVC-0570</td><td>MV Cable</td>
+      <td>Mushrif</td>
+      <td><span class="badge" style="background:#3ECF8E">Low</span></td>
+      <td>Cable Fault</td><td>17/01/2026</td>
+      <td>54.9h</td><td style="font-weight:700">29.9h</td>
+      <td>CT Ratio Drift</td>
+      <td><span class="badge" style="background:#3ECF8E">Resolved</span></td>
+    </tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ PANEL F ══ -->
+<div class="panel" id="pF">
+  <div class="panel-header">
+    <div class="panel-title">F — HIGH-RISK EVENT QUEUE</div>
+    <div class="panel-sub">Priority-ranked failures · Criticality × Impact matrix · SLA countdown · F01 + F03 cross-referenced · 1,000 events</div>
+  </div>
+
+  <div class="xref-box">
+    <span class="xref"><strong>F01 Cross-Ref:</strong> Health_Score · RUL · Risk_Score · Replacement_Cost per Asset_ID</span>
+    <span class="xref"><strong>F03 Cross-Ref:</strong> WO_ID · Crew_Name · SLA_Priority per Work Order</span>
+  </div>
+
+  <div class="chart-grid chart-3">
+    <div class="chart-box"><div class="chart-title">Priority Distribution</div><div class="chart-wrap"><canvas id="fPrioChart"></canvas></div></div>
+    <div class="chart-box"><div class="chart-title">Dispatch Status</div><div class="chart-wrap"><canvas id="fDispChart"></canvas></div></div>
+    <div class="chart-box"><div class="chart-title">Failure Probability Buckets</div><div class="chart-wrap"><canvas id="fFpChart"></canvas></div></div>
+  </div>
+
+  <div class="chart-title" style="padding:0 0 8px 0;">Top 10 Highest-Priority Events (Sorted by Risk Rank)</div>
+  <div class="table-box">
+    <table class="tbl">
+      <thead><tr>
+        <th>Rank</th><th>Event ID</th><th>Asset ID</th><th>Type</th><th>Zone</th>
+        <th>Fail Prob%</th><th>Crit Rating</th><th>Failure Type</th>
+        <th>SLA Countdown</th><th>Priority</th><th>AI Conf%</th><th>Dispatch</th>
+      </tr></thead>
+      <tbody><tr>
+      <td style="font-weight:700;color:#0D2D52">1</td>
+      <td>EVT-F02-0001</td><td>AST-CAP-0629</td><td>Capacitor Bank</td><td>Al Qusis Ind.</td>
+      <td style="font-weight:700;color:#E53E3E">67.1%</td>
+      <td>2/5</td><td>Bushing Failure</td>
+      <td>4h</td>
+      <td><span class="badge" style="background:#E53E3E">P0-Emergency</span></td>
+      <td>76.8%</td>
+      <td><span class="badge" style="background:#ED8936">Pending</span></td>
+    </tr><tr>
+      <td style="font-weight:700;color:#0D2D52">2</td>
+      <td>EVT-F02-0002</td><td>AST-PMT-0661</td><td>Pole-Mounted Transformer</td><td>Al Rashidiya</td>
+      <td style="font-weight:700;color:#E53E3E">54.6%</td>
+      <td>2/5</td><td>Busbar Failure</td>
+      <td>4h</td>
+      <td><span class="badge" style="background:#E53E3E">P0-Emergency</span></td>
+      <td>85.7%</td>
+      <td><span class="badge" style="background:#ED8936">Pending</span></td>
+    </tr><tr>
+      <td style="font-weight:700;color:#0D2D52">3</td>
+      <td>EVT-F02-0003</td><td>AST-DT-0815</td><td>Distribution Transformer</td><td>Al Khawaneej</td>
+      <td style="font-weight:700;color:#E53E3E">52.6%</td>
+      <td>4/5</td><td>Bushing Failure</td>
+      <td>4h</td>
+      <td><span class="badge" style="background:#E53E3E">P0-Emergency</span></td>
+      <td>72.0%</td>
+      <td><span class="badge" style="background:#3ECF8E">Dispatched</span></td>
+    </tr><tr>
+      <td style="font-weight:700;color:#0D2D52">4</td>
+      <td>EVT-F02-0004</td><td>AST-LVC-0302</td><td>LV Cable</td><td>Al Murabba</td>
+      <td style="font-weight:700;color:#E53E3E">80.1%</td>
+      <td>2/5</td><td>Insulation Breakdown</td>
+      <td>4h</td>
+      <td><span class="badge" style="background:#E53E3E">P0-Emergency</span></td>
+      <td>93.5%</td>
+      <td><span class="badge" style="background:#3ECF8E">Dispatched</span></td>
+    </tr><tr>
+      <td style="font-weight:700;color:#0D2D52">5</td>
+      <td>EVT-F02-0005</td><td>AST-MVC-0730</td><td>MV Cable</td><td>Business Bay</td>
+      <td style="font-weight:700;color:#E53E3E">29.5%</td>
+      <td>2/5</td><td>Cooling Failure</td>
+      <td>4h</td>
+      <td><span class="badge" style="background:#E53E3E">P0-Emergency</span></td>
+      <td>91.6%</td>
+      <td><span class="badge" style="background:#3ECF8E">Dispatched</span></td>
+    </tr><tr>
+      <td style="font-weight:700;color:#0D2D52">6</td>
+      <td>EVT-F02-0006</td><td>AST-CAP-0442</td><td>Capacitor Bank</td><td>Al Twar</td>
+      <td style="font-weight:700;color:#E53E3E">70.9%</td>
+      <td>2/5</td><td>Relay Malfunction</td>
+      <td>4h</td>
+      <td><span class="badge" style="background:#E53E3E">P0-Emergency</span></td>
+      <td>85.8%</td>
+      <td><span class="badge" style="background:#ED8936">Pending</span></td>
+    </tr><tr>
+      <td style="font-weight:700;color:#0D2D52">7</td>
+      <td>EVT-F02-0007</td><td>AST-MVC-0617</td><td>MV Cable</td><td>Al Warqa</td>
+      <td style="font-weight:700;color:#E53E3E">80.5%</td>
+      <td>2/5</td><td>Arc Flash</td>
+      <td>4h</td>
+      <td><span class="badge" style="background:#E53E3E">P0-Emergency</span></td>
+      <td>79.9%</td>
+      <td><span class="badge" style="background:#ED8936">Pending</span></td>
+    </tr><tr>
+      <td style="font-weight:700;color:#0D2D52">8</td>
+      <td>EVT-F02-0008</td><td>AST-PMT-0407</td><td>Pole-Mounted Transformer</td><td>Al Qusis Ind.</td>
+      <td style="font-weight:700;color:#E53E3E">65.1%</td>
+      <td>2/5</td><td>Cooling Failure</td>
+      <td>4h</td>
+      <td><span class="badge" style="background:#E53E3E">P0-Emergency</span></td>
+      <td>85.8%</td>
+      <td><span class="badge" style="background:#3ECF8E">Dispatched</span></td>
+    </tr><tr>
+      <td style="font-weight:700;color:#0D2D52">9</td>
+      <td>EVT-F02-0009</td><td>AST-CAP-0648</td><td>Capacitor Bank</td><td>Al Nahda</td>
+      <td style="font-weight:700;color:#E53E3E">57.3%</td>
+      <td>4/5</td><td>Transformer Oil Leak</td>
+      <td>4h</td>
+      <td><span class="badge" style="background:#E53E3E">P0-Emergency</span></td>
+      <td>85.7%</td>
+      <td><span class="badge" style="background:#3ECF8E">Dispatched</span></td>
+    </tr><tr>
+      <td style="font-weight:700;color:#0D2D52">10</td>
+      <td>EVT-F02-0010</td><td>AST-SW-0673</td><td>Switchgear Panel</td><td>Al Karama</td>
+      <td style="font-weight:700;color:#E53E3E">35.9%</td>
+      <td>5/5</td><td>Cable Fault</td>
+      <td>4h</td>
+      <td><span class="badge" style="background:#E53E3E">P0-Emergency</span></td>
+      <td>94.6%</td>
+      <td><span class="badge" style="background:#3ECF8E">Dispatched</span></td>
+    </tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ PANEL G ══ -->
+<div class="panel" id="pG">
+  <div class="panel-header">
+    <div class="panel-title">G — ASSET FAILURE RATE TREND TRACKER</div>
+    <div class="panel-sub">Power / Water / Gas failure MTD · AI detection lift % · MTBF trends ·  · 36-month window</div>
+  </div>
+
+  <div class="kpi-grid kpi-4">
+    <div class="kpi-card" style="--accent:#1A8FE3"><div class="kpi-value">87.7%</div><div class="kpi-label">Avg AI Detection Rate</div><div class="kpi-sub">vs manual baseline</div></div>
+    <div class="kpi-card" style="--accent:#3ECF8E"><div class="kpi-value">15.1%</div><div class="kpi-label">Avg Detection Lift</div><div class="kpi-sub">Improvement over pre-AI</div></div>
+    <div class="kpi-card" style="--accent:#F5C518"><div class="kpi-value">19.0%</div><div class="kpi-label">Water NRW Avg</div><div class="kpi-sub">Non-revenue water rate</div></div>
+    <div class="kpi-card" style="--accent:#00B4A6"><div class="kpi-value">36</div><div class="kpi-label">Months Tracked</div><div class="kpi-sub">Full historical window</div></div>
+  </div>
+
+  <div class="chart-box full" style="margin-bottom:12px;">
+    <div class="chart-title">Monthly Failure Count by Utility (Last 12 Months)</div>
+    <div class="chart-wrap tall"><canvas id="gTrendChart"></canvas></div>
+  </div>
+
+  <div class="chart-box">
+    <div class="chart-title">Top Asset Types by AI Detection Lift %</div>
+    <div class="chart-wrap"><canvas id="gLiftChart"></canvas></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ PANEL H ══ -->
+<div class="panel" id="pH">
+  <div class="panel-header">
+    <div class="panel-title">H — PREDICTION LEAD-TIME TRACKER</div>
+    <div class="panel-sub">Avg ML lead-time · % predictions caught 24h+ early · By model &amp; asset type · Outcome distribution · 1,000 predictions</div>
+  </div>
+
+  <div class="kpi-grid kpi-4">
+    <div class="kpi-card" style="--accent:#00B4A6"><div class="kpi-value">41.0h</div><div class="kpi-label">Avg Lead Time</div><div class="kpi-sub">Pre-failure detection</div></div>
+    <div class="kpi-card" style="--accent:#3ECF8E"><div class="kpi-value">813</div><div class="kpi-label">Caught 24h+ Early</div><div class="kpi-sub">of 1,000 predictions</div></div>
+    <div class="kpi-card" style="--accent:#1A8FE3"><div class="kpi-value">81.3%</div><div class="kpi-label">24h+ Catch Rate</div><div class="kpi-sub">Actionable advance warning</div></div>
+    <div class="kpi-card" style="--accent:#F5C518"><div class="kpi-value">6</div><div class="kpi-label">ML Models Active</div><div class="kpi-sub">LSTM · XGB · RF · ISO · AE · Prophet</div></div>
+  </div>
+
+  <div class="chart-grid chart-3">
+    <div class="chart-box"><div class="chart-title">Lead-Time Category Distribution</div><div class="chart-wrap"><canvas id="hLtCatChart"></canvas></div></div>
+    <div class="chart-box"><div class="chart-title">Avg Lead-Time by ML Model (Hours)</div><div class="chart-wrap"><canvas id="hModelChart"></canvas></div></div>
+    <div class="chart-box"><div class="chart-title">Prediction Outcome Distribution</div><div class="chart-wrap"><canvas id="hOutcomeChart"></canvas></div></div>
+  </div>
+
+  <div class="chart-box">
+    <div class="chart-title">Avg Lead-Time by Asset Type (Hours)</div>
+    <div class="chart-wrap tall"><canvas id="hTypeChart"></canvas></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ PANEL I ══ -->
+<div class="panel" id="pI">
+  <div class="panel-header">
+    <div class="panel-title">I — FIELD DISPATCH & COST AVOIDANCE</div>
+    <div class="panel-sub">Auto WO generation · Avoided cost AED · Resolution rate · F01 asset cost · F03 crew dispatch · </div>
+  </div>
+
+  <div class="xref-box">
+    <span class="xref"><strong>F01 Cross-Ref:</strong> Replacement_Cost_AED · Health_Score per Asset_ID</span>
+    <span class="xref"><strong>F03 Cross-Ref:</strong> WO_ID · Crew_Name · SLA_Priority from Field Safety</span>
+    <span class="xref"><strong>F02 Alert_ID</strong> links Prediction → Dispatch chain</span>
+  </div>
+
+  <div class="kpi-grid kpi-4">
+    <div class="kpi-card" style="--accent:#3ECF8E"><div class="kpi-value">AED 77.99M</div><div class="kpi-label">Total Cost Avoided</div><div class="kpi-sub">Across 1,000 dispatches</div></div>
+    <div class="kpi-card" style="--accent:#00B4A6"><div class="kpi-value">882</div><div class="kpi-label">Auto WOs Generated</div><div class="kpi-sub">88.2% automation rate</div></div>
+    <div class="kpi-card" style="--accent:#1A8FE3"><div class="kpi-value">82.3%</div><div class="kpi-label">Resolution Rate</div><div class="kpi-sub">Dispatches closed</div></div>
+    <div class="kpi-card" style="--accent:#ED8936"><div class="kpi-value">64.4%</div><div class="kpi-label">Actual Failures</div><div class="kpi-sub">Confirmed failure events</div></div>
+  </div>
+
+  <div class="chart-grid chart-2">
+    <div class="chart-box"><div class="chart-title">Avoided Cost by Category (AED M)</div><div class="chart-wrap"><canvas id="iCatChart"></canvas></div></div>
+    <div class="chart-box"><div class="chart-title">Resolution Status</div><div class="chart-wrap"><canvas id="iResChart"></canvas></div></div>
+  </div>
+
+  <div class="chart-box">
+    <div class="chart-title">Top Asset Types by Avoided Cost (AED '000)</div>
+    <div class="chart-wrap tall"><canvas id="iTypeChart"></canvas></div>
+  </div>
+</div>
+
+</div><!-- /main -->
+
+<div class="footer">
+  Lumina AI · F02 Failure &amp; Leak Prediction · MVP Prototype · Data: Illustrative (/panel) · GCC Utility Alignment:  · WebSocket streaming ready
+</div>
+
+<script>
+const NAV='#0D2D52',TEAL='#00B4A6',GOLD='#F5C518',GREEN='#3ECF8E',BLUE='#1A8FE3',RED='#E53E3E',ORANGE='#ED8936',PURPLE='#805AD5';
+const PALETTE=[TEAL,BLUE,GOLD,GREEN,ORANGE,RED,PURPLE,'#F56565','#68D391','#63B3ED'];
+const GRID={color:'rgba(255,255,255,0.05)'};
+const TICK={color:'#7A9BB5',font:{size:10}};
+const baseOpts=(title)=>({responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},title:{display:false},tooltip:{backgroundColor:'#0D2D52',borderColor:TEAL,borderWidth:1}},scales:{x:{grid:GRID,ticks:TICK},y:{grid:GRID,ticks:TICK}}});
+const doughOpts=()=>({responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{color:'#A0B8CC',font:{size:10},boxWidth:12}}}});
+
+function showPanel(id,el){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-link').forEach(n=>n.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  el.classList.add('active');
+  if(id==='pD')setTimeout(initMap,100);
+}
+
+// ── Panel A charts ────────────────────────────────────────────────────────
+new Chart(document.getElementById('aSevChart'),{type:'doughnut',data:{labels:["Low", "Medium", "High", "Critical"],datasets:[{data:[167, 325, 348, 160],backgroundColor:[RED,ORANGE,GOLD,GREEN]}]},options:doughOpts()});
+new Chart(document.getElementById('aTtfChart'),{type:'doughnut',data:{labels:["> 7 days", "< 24h", "3-7 days", "24-72h"],datasets:[{data:[689, 259, 35, 17],backgroundColor:[RED,ORANGE,GOLD,GREEN]}]},options:doughOpts()});
+new Chart(document.getElementById('aDispChart'),{type:'doughnut',data:{labels:["Pending", "Scheduled", "Dispatched"],datasets:[{data:[314, 325, 361],backgroundColor:[GREEN,ORANGE,BLUE]}]},options:doughOpts()});
+
+// ── Panel B charts ────────────────────────────────────────────────────────
+new Chart(document.getElementById('bUtilChart'),{type:'bar',data:{labels:["Power", "Water", "Gas"],datasets:[{label:'Anomalies',data:[190, 41, 21],backgroundColor:[BLUE,TEAL,ORANGE]}]},options:{...baseOpts(),plugins:{legend:{display:false}}}});
+new Chart(document.getElementById('bSensorChart'),{type:'bar',data:{labels:["Pressure", "Load Current", "Oil Temp", "Partial Discharge", "Vibration"],datasets:[{label:'Count',data:[43, 41, 37, 29, 27],backgroundColor:PALETTE}]},options:{...baseOpts(),indexAxis:'y',plugins:{legend:{display:false}}}});
+
+// ── Panel C charts ────────────────────────────────────────────────────────
+new Chart(document.getElementById('cModelChart'),{type:'bar',data:{labels:["Isolation Forest v2.1", "Autoencoder v2.0", "Prophet-STL v1.9", "XGBoost Ensemble v1.4", "LSTM-Seq2Seq v3.2", "Random Forest v3.1"],datasets:[{label:'Avg F1',data:[0.81, 0.83, 0.79, 0.84, 0.87, 0.82],backgroundColor:PALETTE,borderRadius:4}]},options:{...baseOpts(),scales:{x:{grid:GRID,ticks:{...TICK,maxRotation:30}},y:{grid:GRID,ticks:TICK,min:0.7,max:0.95}},plugins:{legend:{display:false}}}});
+new Chart(document.getElementById('cTrendChart'),{type:'line',data:{labels:["2025-07", "2025-08", "2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06"],datasets:[{label:'F1 Score',data:[0.83, 0.83, 0.83, 0.83, 0.82, 0.83, 0.83, 0.82, 0.83, 0.84, 0.83, 0.83],borderColor:TEAL,backgroundColor:'rgba(0,180,166,0.1)',fill:true,tension:0.4,pointRadius:3}]},options:{...baseOpts(),scales:{x:{grid:GRID,ticks:{...TICK,maxRotation:45}},y:{grid:GRID,ticks:TICK,min:0.7,max:0.95}},plugins:{legend:{display:false}}}});
+
+// ── Panel D charts ────────────────────────────────────────────────────────
+new Chart(document.getElementById('dHzChart'),{type:'doughnut',data:{labels:["Green", "Red", "Amber"],datasets:[{data:[299, 514, 187],backgroundColor:[RED,GREEN,ORANGE]}]},options:doughOpts()});
+new Chart(document.getElementById('dZoneChart'),{type:'bar',data:{labels:["Al Dhafra", "Al Mamzar", "Al Twar", "Al Qusais", "Oud Metha", "Al Khawaneej", "Al Mankhool", "Al Barsha"],datasets:[{label:'Avg Heat Score',data:[42.8, 40.2, 39.8, 39.6, 39.5, 38.7, 38.5, 38.5],backgroundColor:PALETTE,borderRadius:4}]},options:{...baseOpts(),indexAxis:'y',plugins:{legend:{display:false}}}});
+
+// ── Panel E charts ────────────────────────────────────────────────────────
+new Chart(document.getElementById('eSevChart'),{type:'doughnut',data:{labels:["High", "Medium", "Low", "Critical"],datasets:[{data:[249, 374, 264, 113],backgroundColor:[RED,ORANGE,GOLD,GREEN]}]},options:doughOpts()});
+new Chart(document.getElementById('eMttrChart'),{type:'bar',data:{labels:["Critical", "High", "Medium", "Low"],datasets:[{label:'MTTR (h)',data:[4.9, 7.9, 16.1, 24.0],backgroundColor:[RED,ORANGE,GOLD,GREEN],borderRadius:4}]},options:{...baseOpts(),plugins:{legend:{display:false}}}});
+new Chart(document.getElementById('eRcChart'),{type:'bar',data:{labels:["Load Current (A)", "Pressure (bar)", "Partial Discharge (pC)", "DGA C2H2 (ppm)", "CT Ratio Drift"],datasets:[{label:'Count',data:[94, 93, 92, 91, 90],backgroundColor:PALETTE,borderRadius:4}]},options:{...baseOpts(),indexAxis:'y',plugins:{legend:{display:false}}}});
+
+// ── Panel F charts ────────────────────────────────────────────────────────
+new Chart(document.getElementById('fPrioChart'),{type:'doughnut',data:{labels:["P0-Emergency", "P1-Urgent", "P2-Planned", "P3-Routine"],datasets:[{data:[146, 366, 365, 123],backgroundColor:[RED,ORANGE,GOLD,GREEN,BLUE]}]},options:doughOpts()});
+new Chart(document.getElementById('fDispChart'),{type:'doughnut',data:{labels:["Pending", "Dispatched"],datasets:[{data:[665, 335],backgroundColor:[GREEN,ORANGE]}]},options:doughOpts()});
+new Chart(document.getElementById('fFpChart'),{type:'bar',data:{labels:["<30%", "30-50%", "50-70%", ">70%"],datasets:[{label:'Events',data:[104, 378, 374, 144],backgroundColor:[GREEN,GOLD,ORANGE,RED],borderRadius:4}]},options:{...baseOpts(),plugins:{legend:{display:false}}}});
+
+// ── Panel G charts ────────────────────────────────────────────────────────
+new Chart(document.getElementById('gTrendChart'),{type:'bar',data:{labels:["2025-07", "2025-08", "2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06"],datasets:[{label:'Power',data:[94, 86, 73, 52, 48, 60, 70, 39, 78, 65, 66, 58],backgroundColor:BLUE+'99',borderRadius:2},{label:'Water',data:[26, 26, 30, 30, 22, 21, 20, 21, 44, 18, 15, 13],backgroundColor:TEAL+'99',borderRadius:2},{label:'Gas',data:[6, 7, 6, 5, 10, 4, 10, 3, 9, 5, 14, 9],backgroundColor:ORANGE+'99',borderRadius:2}]},options:{...baseOpts(),plugins:{legend:{display:true,labels:{color:'#A0B8CC',font:{size:10}}}}}});
+new Chart(document.getElementById('gLiftChart'),{type:'bar',data:{labels:["Gas/Gas Transmis", "Power/Switchgear P", "Power/Feeder Pilla", "Power/Pole-Mounted", "Water/Water Pump S", "Gas/Gas Distribu", "Power/MV Cable", "Power/Distribution"],datasets:[{label:'Lift%',data:[17.3, 16.0, 15.7, 15.6, 15.6, 15.6, 15.3, 15.3],backgroundColor:PALETTE,borderRadius:4}]},options:{...baseOpts(),indexAxis:'y',plugins:{legend:{display:false}}}});
+
+// ── Panel H charts ────────────────────────────────────────────────────────
+new Chart(document.getElementById('hLtCatChart'),{type:'doughnut',data:{labels:[">48h", ">12h", ">72h", ">24h", "<12h"],datasets:[{data:[293, 115, 57, 460, 75],backgroundColor:[RED,ORANGE,GOLD,GREEN,BLUE]}]},options:doughOpts()});
+new Chart(document.getElementById('hModelChart'),{type:'bar',data:{labels:["LSTM-Seq2Seq v3.2", "Isolation Forest v2.1", "XGBoost Ensemble v1.4", "Autoencoder v2.0", "Random Forest v3.1", "Prophet-STL v1.9"],datasets:[{label:'Avg Lead-Time (h)',data:[38.7, 43.3, 41.3, 38.9, 41.9, 42.3],backgroundColor:PALETTE,borderRadius:4}]},options:{...baseOpts(),plugins:{legend:{display:false}},scales:{x:{grid:GRID,ticks:{...TICK,maxRotation:30}},y:{grid:GRID,ticks:TICK}}}});
+new Chart(document.getElementById('hOutcomeChart'),{type:'doughnut',data:{labels:["Failure_Confirmed", "Prevented_By_Dispatch", "False_Positive"],datasets:[{data:[623, 245, 132],backgroundColor:[GREEN,ORANGE,BLUE]}]},options:doughOpts()});
+new Chart(document.getElementById('hTypeChart'),{type:'bar',data:{labels:["Switchgear Panel", "Ring Main Unit", "Circuit Breaker", "Feeder Pillar", "Capacitor Bank", "Pole-Mounted Transformer", "Underground Cable", "MV Cable"],datasets:[{label:'Avg Lead-Time (h)',data:[44.5, 43.2, 41.8, 41.5, 41.5, 41.4, 41.4, 40.2],backgroundColor:PALETTE,borderRadius:4}]},options:{...baseOpts(),indexAxis:'y',plugins:{legend:{display:false}}}});
+
+// ── Panel I charts ────────────────────────────────────────────────────────
+new Chart(document.getElementById('iCatChart'),{type:'bar',data:{labels:["Full Avoidance", "No Avoidance", "Cost Reduction", "Partial Avoidance"],datasets:[{label:'AED M',data:[24.37, 7.8, 18.17, 27.66],backgroundColor:PALETTE,borderRadius:4}]},options:{...baseOpts(),plugins:{legend:{display:false}}}});
+new Chart(document.getElementById('iResChart'),{type:'doughnut',data:{labels:["In Progress", "Resolved", "Pending"],datasets:[{data:[94, 823, 83],backgroundColor:[GREEN,ORANGE,RED]}]},options:doughOpts()});
+new Chart(document.getElementById('iTypeChart'),{type:'bar',data:{labels:["Power Transformer", "Switchgear Panel", "Distribution Transformer", "Circuit Breaker", "Ring Main Unit", "Underground Cable", "MV Cable", "Pole-Mounted Transformer"],datasets:[{label:"AED '000",data:[38735.0, 9859.0, 7898.0, 4627.0, 4262.0, 2948.0, 2640.0, 2057.0],backgroundColor:PALETTE,borderRadius:4}]},options:{...baseOpts(),indexAxis:'y',plugins:{legend:{display:false}}}});
+
+// ── Panel D Map ───────────────────────────────────────────────────────────
+let _mapInit=false;
+function initMap(){
+  if(_mapInit)return; _mapInit=true;
+  const el=document.getElementById('flp-map');
+  const map=L.map(el).setView([24.8,55.1],9);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OSM',maxZoom:15}).addTo(map);
+  const pts=[{"id": "GEO-F02-0037", "asset": "AST-LVC-0037", "type": "LV Cable", "zone": "Al Dhafra", "lat": 23.485654, "lon": 53.941202, "pf30": 19.3, "hz": "Red", "heat": 73.2, "hs": 65.1, "risk": 25.0, "status": "Medium"}, {"id": "GEO-F02-0710", "asset": "AST-CAP-0710", "type": "Capacitor Bank", "zone": "Al Qusais", "lat": 25.271211, "lon": 55.370525, "pf30": 14.2, "hz": "Red", "heat": 67.0, "hs": 70.5, "risk": 20.0, "status": "Medium"}, {"id": "GEO-F02-0858", "asset": "AST-PMT-0858", "type": "Pole-Mounted Transformer", "zone": "Al Mankhool", "lat": 25.252884, "lon": 55.286924, "pf30": 13.9, "hz": "Red", "heat": 66.5, "hs": 64.4, "risk": 20.0, "status": "High"}, {"id": "GEO-F02-0859", "asset": "AST-OHL-0859", "type": "Overhead Line", "zone": "Nad Al Sheba", "lat": 25.162993, "lon": 55.325075, "pf30": 15.7, "hz": "Red", "heat": 66.2, "hs": 43.8, "risk": 15.0, "status": "Critical"}, {"id": "GEO-F02-0987", "asset": "AST-OHL-0987", "type": "Overhead Line", "zone": "Mirdif", "lat": 25.233983, "lon": 55.412933, "pf30": 8.3, "hz": "Red", "heat": 64.5, "hs": 25.4, "risk": 17.9, "status": "Critical"}, {"id": "GEO-F02-0464", "asset": "AST-UGC-0464", "type": "Underground Cable", "zone": "Al Ghusais", "lat": 25.273102, "lon": 55.356716, "pf30": 12.2, "hz": "Red", "heat": 63.4, "hs": 52.8, "risk": 15.0, "status": "High"}, {"id": "GEO-F02-0096", "asset": "AST-DT-0096", "type": "Distribution Transformer", "zone": "Al Twar", "lat": 25.256937, "lon": 55.355501, "pf30": 10.8, "hz": "Red", "heat": 61.6, "hs": 52.7, "risk": 20.0, "status": "High"}, {"id": "GEO-F02-0479", "asset": "AST-PMT-0479", "type": "Pole-Mounted Transformer", "zone": "Bur Dubai", "lat": 25.264104, "lon": 55.292587, "pf30": 10.1, "hz": "Red", "heat": 60.4, "hs": 34.6, "risk": 15.3, "status": "Critical"}, {"id": "GEO-F02-0323", "asset": "AST-OHL-0323", "type": "Overhead Line", "zone": "Al Mamzar", "lat": 25.305999, "lon": 55.338237, "pf30": 11.5, "hz": "Amber", "heat": 59.7, "hs": 78.0, "risk": 25.0, "status": "Medium"}, {"id": "GEO-F02-0339", "asset": "AST-RMU-0339", "type": "Ring Main Unit", "zone": "Dubai Investments", "lat": 25.066479, "lon": 55.338346, "pf30": 9.0, "hz": "Red", "heat": 59.3, "hs": 38.2, "risk": 14.8, "status": "Critical"}, {"id": "GEO-F02-0748", "asset": "AST-MVC-0748", "type": "MV Cable", "zone": "Al Dhafra", "lat": 23.50588, "lon": 53.956069, "pf30": 10.3, "hz": "Red", "heat": 58.8, "hs": 36.4, "risk": 15.5, "status": "Critical"}, {"id": "GEO-F02-0818", "asset": "AST-LVC-0818", "type": "LV Cable", "zone": "Jebel Ali", "lat": 24.99328, "lon": 55.065729, "pf30": 8.5, "hz": "Red", "heat": 58.0, "hs": 40.1, "risk": 14.0, "status": "Critical"}, {"id": "GEO-F02-0154", "asset": "AST-UGC-0154", "type": "Underground Cable", "zone": "Al Ghusais", "lat": 25.264402, "lon": 55.379756, "pf30": 7.7, "hz": "Red", "heat": 56.7, "hs": 46.9, "risk": 16.5, "status": "Critical"}, {"id": "GEO-F02-0488", "asset": "AST-DT-0488", "type": "Distribution Transformer", "zone": "Al Mamzar", "lat": 25.310032, "lon": 55.349967, "pf30": 10.4, "hz": "Red", "heat": 56.5, "hs": 32.8, "risk": 11.1, "status": "Critical"}, {"id": "GEO-F02-0244", "asset": "AST-SW-0244", "type": "Switchgear Panel", "zone": "Oud Metha", "lat": 25.218911, "lon": 55.294129, "pf30": 8.2, "hz": "Red", "heat": 56.3, "hs": 35.2, "risk": 17.2, "status": "Critical"}, {"id": "GEO-F02-0194", "asset": "AST-LVC-0194", "type": "LV Cable", "zone": "Al Qusis Ind.", "lat": 25.264531, "lon": 55.357736, "pf30": 11.3, "hz": "Red", "heat": 56.0, "hs": 43.5, "risk": 12.1, "status": "Critical"}, {"id": "GEO-F02-0049", "asset": "AST-SW-0049", "type": "Switchgear Panel", "zone": "Al Ghusais", "lat": 25.256393, "lon": 55.381207, "pf30": 9.4, "hz": "Red", "heat": 55.9, "hs": 42.8, "risk": 12.5, "status": "Critical"}, {"id": "GEO-F02-0269", "asset": "AST-SW-0269", "type": "Switchgear Panel", "zone": "Al Mizhar", "lat": 25.194744, "lon": 55.403989, "pf30": 9.2, "hz": "Red", "heat": 55.6, "hs": 44.3, "risk": 16.9, "status": "Critical"}, {"id": "GEO-F02-0170", "asset": "AST-CB-0170", "type": "Circuit Breaker", "zone": "Al Quoz", "lat": 25.145774, "lon": 55.22616, "pf30": 9.5, "hz": "Red", "heat": 55.5, "hs": 52.5, "risk": 16.0, "status": "High"}, {"id": "GEO-F02-0648", "asset": "AST-CAP-0648", "type": "Capacitor Bank", "zone": "Al Nahda", "lat": 25.289155, "lon": 55.361858, "pf30": 11.1, "hz": "Red", "heat": 55.4, "hs": 38.6, "risk": 10.3, "status": "Critical"}, {"id": "GEO-F02-0964", "asset": "AST-RMU-0964", "type": "Ring Main Unit", "zone": "Downtown", "lat": 25.198018, "lon": 55.270778, "pf30": 8.5, "hz": "Red", "heat": 55.3, "hs": 39.0, "risk": 15.8, "status": "Critical"}, {"id": "GEO-F02-0211", "asset": "AST-DT-0211", "type": "Distribution Transformer", "zone": "Al Dhafra", "lat": 23.50219, "lon": 53.958067, "pf30": 8.0, "hz": "Red", "heat": 55.2, "hs": 50.4, "risk": 17.0, "status": "High"}, {"id": "GEO-F02-0322", "asset": "AST-SW-0322", "type": "Switchgear Panel", "zone": "Mirdif", "lat": 25.216206, "lon": 55.426335, "pf30": 10.0, "hz": "Red", "heat": 55.1, "hs": 57.9, "risk": 17.9, "status": "High"}, {"id": "GEO-F02-0777", "asset": "AST-UGC-0777", "type": "Underground Cable", "zone": "Oud Metha", "lat": 25.220589, "lon": 55.307751, "pf30": 8.9, "hz": "Red", "heat": 55.0, "hs": 44.7, "risk": 12.9, "status": "Critical"}, {"id": "GEO-F02-0875", "asset": "AST-SW-0875", "type": "Switchgear Panel", "zone": "Al Dhafra", "lat": 23.48704, "lon": 53.945227, "pf30": 9.6, "hz": "Red", "heat": 55.0, "hs": 36.2, "risk": 12.1, "status": "Critical"}, {"id": "GEO-F02-0106", "asset": "AST-UGC-0106", "type": "Underground Cable", "zone": "Dubai Investments", "lat": 25.050921, "lon": 55.334088, "pf30": 7.5, "hz": "Red", "heat": 54.9, "hs": 53.3, "risk": 17.9, "status": "High"}, {"id": "GEO-F02-0453", "asset": "AST-UGC-0453", "type": "Underground Cable", "zone": "Al Warqa", "lat": 25.227476, "lon": 55.407526, "pf30": 14.2, "hz": "Amber", "heat": 54.8, "hs": 66.2, "risk": 15.0, "status": "Medium"}, {"id": "GEO-F02-0044", "asset": "AST-PMT-0044", "type": "Pole-Mounted Transformer", "zone": "Al Ain City", "lat": 24.195128, "lon": 55.72979, "pf30": 10.8, "hz": "Red", "heat": 54.6, "hs": 37.8, "risk": 9.9, "status": "Critical"}, {"id": "GEO-F02-0949", "asset": "AST-LVC-0949", "type": "LV Cable", "zone": "Khalidiyah", "lat": 24.482763, "lon": 54.370732, "pf30": 7.6, "hz": "Red", "heat": 54.6, "hs": 44.6, "risk": 15.5, "status": "Critical"}, {"id": "GEO-F02-0417", "asset": "AST-FP-0417", "type": "Feeder Pillar", "zone": "Jumeirah", "lat": 25.196093, "lon": 55.260319, "pf30": 11.4, "hz": "Red", "heat": 54.4, "hs": 39.9, "risk": 8.7, "status": "Critical"}, {"id": "GEO-F02-0334", "asset": "AST-UGC-0334", "type": "Underground Cable", "zone": "Jebel Ali", "lat": 24.979958, "lon": 55.056672, "pf30": 10.2, "hz": "Red", "heat": 54.3, "hs": 56.6, "risk": 16.6, "status": "High"}, {"id": "GEO-F02-0616", "asset": "AST-MVC-0616", "type": "MV Cable", "zone": "Jumeirah", "lat": 25.195995, "lon": 55.265577, "pf30": 9.4, "hz": "Red", "heat": 54.3, "hs": 42.6, "risk": 12.6, "status": "Critical"}, {"id": "GEO-F02-0057", "asset": "AST-SW-0057", "type": "Switchgear Panel", "zone": "Al Twar", "lat": 25.277984, "lon": 55.366902, "pf30": 9.2, "hz": "Red", "heat": 54.2, "hs": 54.0, "risk": 17.6, "status": "High"}, {"id": "GEO-F02-0266", "asset": "AST-DT-0266", "type": "Distribution Transformer", "zone": "Al Murabba", "lat": 24.675672, "lon": 46.714179, "pf30": 6.0, "hz": "Red", "heat": 54.2, "hs": 25.3, "risk": 13.9, "status": "Critical"}, {"id": "GEO-F02-0586", "asset": "AST-FP-0586", "type": "Feeder Pillar", "zone": "Al Mamzar", "lat": 25.314369, "lon": 55.32679, "pf30": 10.9, "hz": "Red", "heat": 54.1, "hs": 54.2, "risk": 16.9, "status": "High"}, {"id": "GEO-F02-0127", "asset": "AST-FP-0127", "type": "Feeder Pillar", "zone": "Al Mankhool", "lat": 25.239985, "lon": 55.294331, "pf30": 7.8, "hz": "Red", "heat": 54.0, "hs": 36.8, "risk": 11.6, "status": "Critical"}, {"id": "GEO-F02-0302", "asset": "AST-LVC-0302", "type": "LV Cable", "zone": "Al Murabba", "lat": 24.682059, "lon": 46.726045, "pf30": 6.6, "hz": "Red", "heat": 53.9, "hs": 32.8, "risk": 12.6, "status": "Critical"}, {"id": "GEO-F02-0206", "asset": "AST-CB-0206", "type": "Circuit Breaker", "zone": "Al Barsha", "lat": 25.102203, "lon": 55.191103, "pf30": 7.5, "hz": "Red", "heat": 53.8, "hs": 45.2, "risk": 16.6, "status": "Critical"}, {"id": "GEO-F02-0698", "asset": "AST-MVC-0698", "type": "MV Cable", "zone": "Al Nahda", "lat": 25.272551, "lon": 55.372443, "pf30": 7.7, "hz": "Red", "heat": 53.8, "hs": 44.5, "risk": 14.4, "status": "Critical"}, {"id": "GEO-F02-0640", "asset": "AST-PMT-0640", "type": "Pole-Mounted Transformer", "zone": "Bur Dubai", "lat": 25.271378, "lon": 55.29603, "pf30": 10.6, "hz": "Red", "heat": 53.7, "hs": 43.6, "risk": 11.3, "status": "Critical"}];
+  pts.forEach(p=>{
+    const col=p.hz==='Red'?'#E53E3E':p.hz==='Amber'?'#ED8936':'#3ECF8E';
+    const r=p.hz==='Red'?10:p.hz==='Amber'?7:5;
+    L.circleMarker([p.lat,p.lon],{radius:r,fillColor:col,color:'#fff',weight:1,fillOpacity:0.85})
+      .addTo(map)
+      .bindPopup('<b>'+p.asset+'</b><br>'+p.type+'<br>Zone: '+p.zone+'<br>Heat: '+p.heat+'<br>HS (F01): '+p.hs+'<br>Risk: '+p.risk+'<br><b style="color:'+col+'">'+p.hz+' ZONE</b>');
+  });
+}
+</script>
+</body>
+</html>

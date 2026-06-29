@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lumina AI — F04 Loss Reduction MVP</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:'Segoe UI',Arial,sans-serif;background:#0D1B2A;color:#E0E8F0;font-size:13px;}
+  .top-nav{background:#061526;border-bottom:2px solid #F5C518;padding:0 24px;display:flex;align-items:center;gap:20px;height:52px;position:sticky;top:0;z-index:999;}
+  .brand{font-size:18px;font-weight:800;color:#F5C518;letter-spacing:1px;white-space:nowrap;}
+  .brand span{color:#00B4A6;}
+  .pillar-tag{background:#0D2D52;border:1px solid #F5C518;color:#F5C518;padding:3px 10px;border-radius:12px;font-size:10px;font-weight:700;letter-spacing:.5px;white-space:nowrap;}
+  .nav-links{display:flex;gap:4px;flex:1;overflow-x:auto;}
+  .nav-link{padding:6px 10px;border-radius:6px;cursor:pointer;white-space:nowrap;font-size:11px;font-weight:600;color:#90A4B8;border:1px solid transparent;transition:all .2s;}
+  .nav-link:hover,.nav-link.active{background:#F5C518;color:#0D1B2A;border-color:#F5C518;}
+  .status-bar{font-size:10px;color:#3ECF8E;white-space:nowrap;display:flex;align-items:center;gap:6px;}
+  .pulse{width:8px;height:8px;border-radius:50%;background:#F5C518;animation:pulse 1.5s infinite;}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.5;transform:scale(.8);}}
+  .main{padding:20px 24px;max-width:1600px;margin:0 auto;}
+  .panel{display:none;} .panel.active{display:block;}
+  .panel-header{background:linear-gradient(135deg,#0D2D52,#1A3D6A);border-radius:10px;padding:16px 20px;margin-bottom:16px;border-left:4px solid #F5C518;}
+  .panel-title{font-size:16px;font-weight:800;color:#E0E8F0;}
+  .panel-sub{font-size:11px;color:#7A9BB5;margin-top:4px;}
+  .kpi-grid{display:grid;gap:12px;margin-bottom:16px;}
+  .kpi-3{grid-template-columns:repeat(3,1fr);} .kpi-4{grid-template-columns:repeat(4,1fr);} .kpi-5{grid-template-columns:repeat(5,1fr);}
+  .kpi-card{background:#0F2035;border-radius:10px;padding:14px 16px;border:1px solid #1A3D6A;text-align:center;position:relative;overflow:hidden;}
+  .kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--accent,#F5C518);}
+  .kpi-value{font-size:26px;font-weight:800;color:var(--accent,#F5C518);line-height:1;}
+  .kpi-label{font-size:10px;color:#7A9BB5;margin-top:4px;text-transform:uppercase;letter-spacing:.5px;}
+  .kpi-sub{font-size:11px;color:#A0B8CC;margin-top:2px;}
+  .chart-grid{display:grid;gap:12px;margin-bottom:16px;}
+  .chart-2{grid-template-columns:repeat(2,1fr);} .chart-3{grid-template-columns:repeat(3,1fr);}
+  .chart-2-1{grid-template-columns:2fr 1fr;} .chart-1-2{grid-template-columns:1fr 2fr;}
+  .chart-box{background:#0F2035;border-radius:10px;padding:16px;border:1px solid #1A3D6A;}
+  .chart-box.full{grid-column:1/-1;}
+  .chart-title{font-size:11px;font-weight:700;color:#A0B8CC;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;display:flex;align-items:center;gap:6px;}
+  .chart-title::before{content:'';width:3px;height:12px;background:#F5C518;border-radius:2px;}
+  .chart-wrap{position:relative;height:180px;} .chart-wrap.tall{height:240px;}
+  .table-box{background:#0F2035;border-radius:10px;padding:16px;border:1px solid #1A3D6A;margin-bottom:16px;overflow-x:auto;}
+  .tbl{width:100%;border-collapse:collapse;font-size:11px;}
+  .tbl th{background:#0D2D52;color:#A0B8CC;padding:7px 8px;text-align:left;font-weight:700;border-bottom:1px solid #1A3D6A;white-space:nowrap;}
+  .tbl td{padding:6px 8px;border-bottom:1px solid #0D1B2A;color:#C8D8E8;white-space:nowrap;}
+  .tbl tr:hover td{background:#142840;}
+  .badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;color:#fff;}
+  .hz-pill{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;color:#fff;}
+  .hz-red{background:#E53E3E;} .hz-amber{background:#ED8936;} .hz-green{background:#3ECF8E;}
+  #lr-map{height:340px;border-radius:10px;overflow:hidden;}
+  .xref{background:#0D2D52;border:1px solid #F5C518;border-radius:6px;padding:8px 12px;font-size:11px;color:#FFE08A;display:inline-block;margin:4px;}
+  .xref strong{color:#F5C518;}
+  .xref-box{margin-bottom:16px;}
+  /* NRW gauge */
+  .nrw-gauges{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px;}
+  .gauge-card{background:#0F2035;border-radius:10px;padding:16px;border:1px solid #1A3D6A;text-align:center;}
+  .gauge-label{font-size:10px;color:#7A9BB5;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;}
+  .gauge-value{font-size:32px;font-weight:800;}
+  .gauge-target{font-size:11px;color:#7A9BB5;margin-top:4px;}
+  .gauge-bar{height:8px;border-radius:4px;background:#1A3D6A;margin-top:8px;overflow:hidden;}
+  .gauge-fill{height:100%;border-radius:4px;transition:width .5s;}
+  .footer{text-align:center;padding:20px;color:#3A5A7A;font-size:10px;border-top:1px solid #1A3D6A;margin-top:24px;}
+</style>
+</head>
+<body>
+<div class="top-nav">
+  <div class="brand">Lumina <span>AI</span></div>
+  <div class="pillar-tag">F04 · LOSS REDUCTION</div>
+  <div class="nav-links">
+    <div class="nav-link active" onclick="showPanel('pA',this)">A · KPI Banner</div>
+    <div class="nav-link" onclick="showPanel('pB',this)">B · Hotspot Map</div>
+    <div class="nav-link" onclick="showPanel('pC',this)">C · Zone Table</div>
+    <div class="nav-link" onclick="showPanel('pD',this)">D · Repair Savings</div>
+    <div class="nav-link" onclick="showPanel('pE',this)">E · Flow Balance</div>
+    <div class="nav-link" onclick="showPanel('pF',this)">F · Emissions</div>
+    <div class="nav-link" onclick="showPanel('pG',this)">G · Zone Detail 360</div>
+    <div class="nav-link" onclick="showPanel('pH',this)">H · NRW Trend</div>
+    <div class="nav-link" onclick="showPanel('pI',this)">I · Loss Breakdown</div>
+  </div>
+  <div class="status-bar"><div class="pulse"></div>LIVE · Loss Reduction · 1,000 Records/Panel · 5-min Refresh</div>
+</div>
+
+<div class="main">
+
+<!-- ══════════════════════════════════════════════════════ PANEL A ══ -->
+<div class="panel active" id="pA">
+  <div class="panel-header">
+    <div class="panel-title">A — EXECUTIVE LOSS KPI BANNER</div>
+    <div class="panel-sub">NRW % today · $ losses · recovery rate · ESG progress · 5-min refresh · Cross-ref: F01 Asset Health · F02 Failure Prediction · F03 Field Safety</div>
+  </div>
+  <div class="xref-box">
+    <span class="xref"><strong>F01 Link:</strong> Asset_ID · Health_Score · Zone per asset</span>
+    <span class="xref"><strong>F02 Link:</strong> Alert_ID · Heat Zone · Failure Prob per hotspot</span>
+    <span class="xref"><strong>F03 Link:</strong> WO_ID · Crew · SLA per repair</span>
+    <span class="xref"><strong>Dataset:</strong> 1,000 daily KPI snapshots · Water / Power / Gas</span>
+  </div>
+
+  <div class="nrw-gauges">
+    <div class="gauge-card">
+      <div class="gauge-label">Water NRW %</div>
+      <div class="gauge-value" style="color:#1A8FE3">18.2%</div>
+      <div class="gauge-target">Target: 15% &nbsp;|&nbsp; Regulatory: 20%</div>
+      <div class="gauge-bar"><div class="gauge-fill" style="width:90.99999999999999%5d;background:#ED8936"></div></div>
+    </div>
+    <div class="gauge-card">
+      <div class="gauge-label">Power Technical Loss %</div>
+      <div class="gauge-value" style="color:#F5C518">7.0%</div>
+      <div class="gauge-target">Target: 5% &nbsp;|&nbsp; Regulatory: 10%</div>
+      <div class="gauge-bar"><div class="gauge-fill" style="width:70.0%5d;background:#ED8936"></div></div>
+    </div>
+    <div class="gauge-card">
+      <div class="gauge-label">Gas Loss %</div>
+      <div class="gauge-value" style="color:#3ECF8E">3.8%</div>
+      <div class="gauge-target">Target: 3% &nbsp;|&nbsp; Regulatory: 6%</div>
+      <div class="gauge-bar"><div class="gauge-fill" style="width:63.33333333333333%5d;background:#ED8936"></div></div>
+    </div>
+  </div>
+
+  <div class="kpi-grid kpi-5">
+    <div class="kpi-card" style="--accent:#E53E3E"><div class="kpi-value">AED 139.6M</div><div class="kpi-label">Total Loss Value</div><div class="kpi-sub">All utilities · 1,000 snapshots</div></div>
+    <div class="kpi-card" style="--accent:#3ECF8E"><div class="kpi-value">77.4%</div><div class="kpi-label">Recovery Rate</div><div class="kpi-sub">Loss-to-revenue recovered</div></div>
+    <div class="kpi-card" style="--accent:#F5C518"><div class="kpi-value">74.1%</div><div class="kpi-label">ESG Progress</div><div class="kpi-sub">vs sustainability targets</div></div>
+    <div class="kpi-card" style="--accent:#00B4A6"><div class="kpi-value">106k</div><div class="kpi-label">CO₂ Saved (Tonnes)</div><div class="kpi-sub">Cumulative reduction</div></div>
+    <div class="kpi-card" style="--accent:#1A8FE3"><div class="kpi-value">76.2%</div><div class="kpi-label">Regulatory Compliant</div><div class="kpi-sub">Below regulatory threshold</div></div>
+  </div>
+
+  <div class="chart-grid chart-2">
+    <div class="chart-box full"><div class="chart-title">NRW % Trend — Last 12 Months (All Utilities vs Target)</div><div class="chart-wrap tall"><canvas id="aNrwTrend"></canvas></div></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ PANEL B ══ -->
+<div class="panel" id="pB">
+  <div class="panel-header">
+    <div class="panel-title">B — LOSS HOTSPOT EXPLORER MAP</div>
+    <div class="panel-sub">GIS map · Zones ranked by $ loss · AI-directed repair priority · Click to drill-down · F02 heat zone overlay</div>
+  </div>
+  <div class="xref-box">
+    <span class="xref"><strong>F02 Cross-Ref:</strong> Alert_ID · Heat Zone · Failure_Prob_30d linked per hotspot</span>
+    <span class="xref"><strong>F03 Cross-Ref:</strong> WO_ID · Crew_Name from Field Safety Work Orders</span>
+    <span class="xref"><strong>F01 Cross-Ref:</strong> Health_Score per Asset_ID at each hotspot</span>
+  </div>
+
+  <div class="kpi-grid kpi-4">
+    <div class="kpi-card" style="--accent:#E53E3E"><div class="kpi-value">AED 97.27M</div><div class="kpi-label">Total Hotspot Loss</div><div class="kpi-sub">1,000 active hotspots</div></div>
+    <div class="kpi-card" style="--accent:#F5C518"><div class="kpi-value">83.5%</div><div class="kpi-label">Avg AI Confidence</div><div class="kpi-sub">Loss location certainty</div></div>
+    <div class="kpi-card" style="--accent:#00B4A6"><div class="kpi-value">1,000</div><div class="kpi-label">Active Hotspots</div><div class="kpi-sub">Water · Power · Gas</div></div>
+    <div class="kpi-card" style="--accent:#3ECF8E"><div class="kpi-value">3</div><div class="kpi-label">Utility Types</div><div class="kpi-sub">Power · Water · Gas</div></div>
+  </div>
+
+  <div class="chart-grid chart-2-1">
+    <div class="chart-box"><div class="chart-title">Hotspot Status Distribution</div><div class="chart-wrap"><canvas id="bStatusChart"></canvas></div></div>
+    <div class="chart-box"><div class="chart-title">By Utility Type</div><div class="chart-wrap"><canvas id="bUtilChart"></canvas></div></div>
+  </div>
+
+  <div class="chart-box" style="margin-bottom:16px;">
+    <div class="chart-title">Loss Hotspot Map — Top 60 Zones by $ Loss (Click for Detail)</div>
+    <div id="lr-map"></div>
+    <div style="display:flex;gap:16px;margin-top:8px;font-size:10px;color:#7A9BB5;">
+      <span>● Red — High Loss &gt;AED 500K</span>
+      <span>● Amber — Medium AED 100–500K</span>
+      <span>● Green — Low &lt;AED 100K</span>
+    </div>
+  </div>
+
+  <div class="chart-title" style="padding:0 0 8px 0;">Top 10 Loss Hotspots by $ Value (F01 · F02 · F03 Cross-Referenced)</div>
+  <div class="table-box">
+    <table class="tbl">
+      <thead><tr>
+        <th>Rank</th><th>Hotspot ID</th><th>Zone</th><th>Segment</th><th>Utility</th>
+        <th>Asset ID</th><th>Loss AED/Day</th><th>AI Conf%</th>
+        <th>Status</th><th>Repair</th><th>F02 Alert ID</th><th>F03 WO ID</th><th>F02 Heat</th>
+      </tr></thead>
+      <tbody><tr>
+      <td style="font-weight:700;color:#0D2D52">665</td>
+      <td>HS-F04-0665</td><td>Al Nahda</td><td>FDR-AL -01</td><td>Power</td>
+      <td>AST-OHL-0665</td>
+      <td style="font-weight:700;color:#E53E3E">AED 229,709</td>
+      <td>82.8%</td>
+      <td><span class="badge" style="background:#E53E3E">Active</span></td>
+      <td><span class="badge" style="background:#ED8936">Pending</span></td>
+      <td></td><td>WO-FS-0428</td>
+      <td><span class="hz-pill hz-"></span></td>
+    </tr><tr>
+      <td style="font-weight:700;color:#0D2D52">840</td>
+      <td>HS-F04-0840</td><td>Al Mamzar</td><td>FDR-AL -02</td><td>Power</td>
+      <td>AST-CAP-0840</td>
+      <td style="font-weight:700;color:#E53E3E">AED 228,984</td>
+      <td>70.0%</td>
+      <td><span class="badge" style="background:#E53E3E">Active</span></td>
+      <td><span class="badge" style="background:#ED8936">Pending</span></td>
+      <td></td><td>WO-FS-0755</td>
+      <td><span class="hz-pill hz-"></span></td>
+    </tr><tr>
+      <td style="font-weight:700;color:#0D2D52">668</td>
+      <td>HS-F04-0668</td><td>Al Qusis Ind.</td><td>FDR-AL -01</td><td>Power</td>
+      <td>AST-UGC-0668</td>
+      <td style="font-weight:700;color:#E53E3E">AED 227,795</td>
+      <td>94.4%</td>
+      <td><span class="badge" style="background:#ED8936">Under Investigation</span></td>
+      <td><span class="badge" style="background:#1A8FE3">Dispatched</span></td>
+      <td></td><td>WO-FS-0561</td>
+      <td><span class="hz-pill hz-"></span></td>
+    </tr><tr>
+      <td style="font-weight:700;color:#0D2D52">271</td>
+      <td>HS-F04-0271</td><td>Al Qusais</td><td>FDR-AL -03</td><td>Power</td>
+      <td>AST-OHL-0271</td>
+      <td style="font-weight:700;color:#E53E3E">AED 227,157</td>
+      <td>84.9%</td>
+      <td><span class="badge" style="background:#E53E3E">Active</span></td>
+      <td><span class="badge" style="background:#ED8936">Pending</span></td>
+      <td></td><td></td>
+      <td><span class="hz-pill hz-"></span></td>
+    </tr><tr>
+      <td style="font-weight:700;color:#0D2D52">421</td>
+      <td>HS-F04-0421</td><td>Khalidiyah</td><td>DMA-AL -04</td><td>Water</td>
+      <td>AST-PMT-0421</td>
+      <td style="font-weight:700;color:#E53E3E">AED 224,143</td>
+      <td>79.1%</td>
+      <td><span class="badge" style="background:#E53E3E">Active</span></td>
+      <td><span class="badge" style="background:#3ECF8E">Completed</span></td>
+      <td></td><td></td>
+      <td><span class="hz-pill hz-"></span></td>
+    </tr><tr>
+      <td style="font-weight:700;color:#0D2D52">574</td>
+      <td>HS-F04-0574</td><td>Bur Dubai</td><td>FDR-AL -03</td><td>Power</td>
+      <td>AST-LVC-0574</td>
+      <td style="font-weight:700;color:#E53E3E">AED 224,025</td>
+      <td>73.1%</td>
+      <td><span class="badge" style="background:#ED8936">Under Investigation</span></td>
+      <td><span class="badge" style="background:#ED8936">Pending</span></td>
+      <td></td><td>WO-FS-0474</td>
+      <td><span class="hz-pill hz-"></span></td>
+    </tr><tr>
+      <td style="font-weight:700;color:#0D2D52">700</td>
+      <td>HS-F04-0700</td><td>Al Murabba</td><td>DMA-AL -02</td><td>Water</td>
+      <td>AST-OHL-0700</td>
+      <td style="font-weight:700;color:#E53E3E">AED 223,706</td>
+      <td>71.0%</td>
+      <td><span class="badge" style="background:#ED8936">Under Investigation</span></td>
+      <td><span class="badge" style="background:#ED8936">Pending</span></td>
+      <td></td><td>WO-FS-0803</td>
+      <td><span class="hz-pill hz-"></span></td>
+    </tr><tr>
+      <td style="font-weight:700;color:#0D2D52">238</td>
+      <td>HS-F04-0238</td><td>Al Qusis Ind.</td><td>DMA-AL -04</td><td>Water</td>
+      <td>AST-SW-0238</td>
+      <td style="font-weight:700;color:#E53E3E">AED 223,609</td>
+      <td>81.7%</td>
+      <td><span class="badge" style="background:#ED8936">Under Investigation</span></td>
+      <td><span class="badge" style="background:#F5C518">In Progress</span></td>
+      <td></td><td></td>
+      <td><span class="hz-pill hz-"></span></td>
+    </tr><tr>
+      <td style="font-weight:700;color:#0D2D52">979</td>
+      <td>HS-F04-0979</td><td>Al Qusais</td><td>DMA-AL -03</td><td>Water</td>
+      <td>AST-MVC-0979</td>
+      <td style="font-weight:700;color:#E53E3E">AED 223,563</td>
+      <td>78.2%</td>
+      <td><span class="badge" style="background:#F5C518">Repair Scheduled</span></td>
+      <td><span class="badge" style="background:#ED8936">Pending</span></td>
+      <td></td><td>WO-FS-0407</td>
+      <td><span class="hz-pill hz-"></span></td>
+    </tr><tr>
+      <td style="font-weight:700;color:#0D2D52">211</td>
+      <td>HS-F04-0211</td><td>Al Dhafra</td><td>DMA-AL -03</td><td>Water</td>
+      <td>AST-DT-0211</td>
+      <td style="font-weight:700;color:#E53E3E">AED 223,386</td>
+      <td>72.2%</td>
+      <td><span class="badge" style="background:#E53E3E">Active</span></td>
+      <td><span class="badge" style="background:#F5C518">In Progress</span></td>
+      <td>GEO-F02-0211</td><td>WO-FS-0893</td>
+      <td><span class="hz-pill hz-red">Red</span></td>
+    </tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ PANEL C ══ -->
+<div class="panel" id="pC">
+  <div class="panel-header">
+    <div class="panel-title">C — LOSS BY ZONE / SEGMENT TABLE</div>
+    <div class="panel-sub">DMA / Feeder / Pipeline ranked by $ loss · AI confidence · Repair status · Trend direction · 1,000 segments</div>
+  </div>
+
+  <div class="chart-grid chart-3">
+    <div class="chart-box"><div class="chart-title">Segment Trend Distribution</div><div class="chart-wrap"><canvas id="cTrendChart"></canvas></div></div>
+    <div class="chart-box"><div class="chart-title">Repair Status</div><div class="chart-wrap"><canvas id="cRepairChart"></canvas></div></div>
+    <div class="chart-box"><div class="chart-title">Segments by Utility</div><div class="chart-wrap"><canvas id="cUtilChart"></canvas></div></div>
+  </div>
+
+  <div class="chart-title" style="padding:0 0 8px 0;">Top 10 Highest-Loss Segments (Ranked by AED MTD)</div>
+  <div class="table-box">
+    <table class="tbl">
+      <thead><tr>
+        <th>Segment ID</th><th>Segment Name</th><th>Utility</th><th>Zone</th>
+        <th>Loss AED MTD</th><th>Loss %</th><th>AI Conf%</th><th>Repair</th><th>Trend</th><th>HS F01</th>
+      </tr></thead>
+      <tbody><tr>
+      <td style="font-weight:700;color:#0D2D52">SEG-F04-0580</td>
+      <td>FDR-AL -19</td><td>Power</td><td>Al Mizhar</td>
+      <td style="font-weight:700;color:#E53E3E">AED 2,314,287</td>
+      <td>29.4%</td><td>75.6%</td>
+      <td><span class="badge" style="background:#ED8936">Pending</span></td>
+      <td><span style="color:#E53E3E;font-weight:700">Worsening</span></td>
+      <td>69.9</td>
+    </tr><tr>
+      <td style="font-weight:700;color:#0D2D52">SEG-F04-0383</td>
+      <td>FDR-AL -08</td><td>Power</td><td>Al Mizhar</td>
+      <td style="font-weight:700;color:#E53E3E">AED 2,305,848</td>
+      <td>25.8%</td><td>93.2%</td>
+      <td><span class="badge" style="background:#F5C518">In Progress</span></td>
+      <td><span style="color:#1A8FE3;font-weight:700">Stable</span></td>
+      <td>57.2</td>
+    </tr><tr>
+      <td style="font-weight:700;color:#0D2D52">SEG-F04-0698</td>
+      <td>FDR-AL -14</td><td>Power</td><td>Al Nahda</td>
+      <td style="font-weight:700;color:#E53E3E">AED 2,266,843</td>
+      <td>28.9%</td><td>92.6%</td>
+      <td><span class="badge" style="background:#999">Scheduled</span></td>
+      <td><span style="color:#3ECF8E;font-weight:700">Improving</span></td>
+      <td>44.5</td>
+    </tr><tr>
+      <td style="font-weight:700;color:#0D2D52">SEG-F04-0904</td>
+      <td>FDR-AL -08</td><td>Power</td><td>Al Karama</td>
+      <td style="font-weight:700;color:#E53E3E">AED 2,260,869</td>
+      <td>8.7%</td><td>80.7%</td>
+      <td><span class="badge" style="background:#ED8936">Pending</span></td>
+      <td><span style="color:#E53E3E;font-weight:700">Worsening</span></td>
+      <td>67.6</td>
+    </tr><tr>
+      <td style="font-weight:700;color:#0D2D52">SEG-F04-0319</td>
+      <td>FDR-JEB-20</td><td>Power</td><td>Jebel Ali</td>
+      <td style="font-weight:700;color:#E53E3E">AED 2,251,618</td>
+      <td>17.2%</td><td>86.6%</td>
+      <td><span class="badge" style="background:#ED8936">Pending</span></td>
+      <td><span style="color:#1A8FE3;font-weight:700">Stable</span></td>
+      <td>71.3</td>
+    </tr><tr>
+      <td style="font-weight:700;color:#0D2D52">SEG-F04-0142</td>
+      <td>DMA-AL -31</td><td>Water</td><td>Al Nahda</td>
+      <td style="font-weight:700;color:#E53E3E">AED 2,249,944</td>
+      <td>16.7%</td><td>73.0%</td>
+      <td><span class="badge" style="background:#ED8936">Pending</span></td>
+      <td><span style="color:#E53E3E;font-weight:700">Worsening</span></td>
+      <td>64.6</td>
+    </tr><tr>
+      <td style="font-weight:700;color:#0D2D52">SEG-F04-0472</td>
+      <td>FDR-AL -12</td><td>Power</td><td>Al Qusis Ind.</td>
+      <td style="font-weight:700;color:#E53E3E">AED 2,249,530</td>
+      <td>27.5%</td><td>86.4%</td>
+      <td><span class="badge" style="background:#999">Scheduled</span></td>
+      <td><span style="color:#E53E3E;font-weight:700">Worsening</span></td>
+      <td>58.2</td>
+    </tr><tr>
+      <td style="font-weight:700;color:#0D2D52">SEG-F04-0206</td>
+      <td>DMA-AL -20</td><td>Water</td><td>Al Barsha</td>
+      <td style="font-weight:700;color:#E53E3E">AED 2,243,388</td>
+      <td>18.5%</td><td>82.7%</td>
+      <td><span class="badge" style="background:#ED8936">Pending</span></td>
+      <td><span style="color:#1A8FE3;font-weight:700">Stable</span></td>
+      <td>45.2</td>
+    </tr><tr>
+      <td style="font-weight:700;color:#0D2D52">SEG-F04-0262</td>
+      <td>FDR-AL -14</td><td>Power</td><td>Al Ain City</td>
+      <td style="font-weight:700;color:#E53E3E">AED 2,240,018</td>
+      <td>33.0%</td><td>75.6%</td>
+      <td><span class="badge" style="background:#999">Scheduled</span></td>
+      <td><span style="color:#1A8FE3;font-weight:700">Stable</span></td>
+      <td>45.4</td>
+    </tr><tr>
+      <td style="font-weight:700;color:#0D2D52">SEG-F04-0488</td>
+      <td>FDR-AL -16</td><td>Power</td><td>Al Mamzar</td>
+      <td style="font-weight:700;color:#E53E3E">AED 2,239,873</td>
+      <td>7.6%</td><td>77.2%</td>
+      <td><span class="badge" style="background:#ED8936">Pending</span></td>
+      <td><span style="color:#E53E3E;font-weight:700">Worsening</span></td>
+      <td>32.8</td>
+    </tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ PANEL D ══ -->
+<div class="panel" id="pD">
+  <div class="panel-header">
+    <div class="panel-title">D — REPAIR-TO-SAVINGS TRACKER</div>
+    <div class="panel-sub">Every repair → $ recovered · closed-loop proof · 12-month savings trend · F03 crew cross-reference</div>
+  </div>
+  <div class="xref-box">
+    <span class="xref"><strong>F03 Cross-Ref:</strong> WO_ID · Crew_Name · SLA_Priority per repair</span>
+    <span class="xref"><strong>F02 Cross-Ref:</strong> Alert_ID triggering each repair dispatch</span>
+    <span class="xref"><strong>F01 Cross-Ref:</strong> Health_Score improvement post-repair</span>
+  </div>
+
+  <div class="kpi-grid kpi-5">
+    <div class="kpi-card" style="--accent:#3ECF8E"><div class="kpi-value">AED 9.89M</div><div class="kpi-label">Daily Savings Active</div><div class="kpi-sub">Sum of all post-repair deltas</div></div>
+    <div class="kpi-card" style="--accent:#F5C518"><div class="kpi-value">29.9d</div><div class="kpi-label">Avg Payback Period</div><div class="kpi-sub">Days to recover repair cost</div></div>
+    <div class="kpi-card" style="--accent:#1A8FE3"><div class="kpi-value">74.4%</div><div class="kpi-label">Verified Savings</div><div class="kpi-sub">Closed-loop confirmed</div></div>
+    <div class="kpi-card" style="--accent:#00B4A6"><div class="kpi-value">1,000</div><div class="kpi-label">Repair Records</div><div class="kpi-sub">Water · Power · Gas</div></div>
+    <div class="kpi-card" style="--accent:#ED8936"><div class="kpi-value">74.4%</div><div class="kpi-label">Audit Verified</div><div class="kpi-sub">Compliant</div></div>
+  </div>
+
+  <div class="chart-grid chart-2">
+    <div class="chart-box full"><div class="chart-title">Monthly YTD Savings Trend (AED M) — Last 12 Months</div><div class="chart-wrap tall"><canvas id="dSavTrend"></canvas></div></div>
+  </div>
+  <div class="chart-grid chart-2">
+    <div class="chart-box"><div class="chart-title">Repair Status Distribution</div><div class="chart-wrap"><canvas id="dStatusChart"></canvas></div></div>
+    <div class="chart-box"><div class="chart-title">Repairs by Utility Type</div><div class="chart-wrap"><canvas id="dUtilChart"></canvas></div></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ PANEL E ══ -->
+<div class="panel" id="pE">
+  <div class="panel-header">
+    <div class="panel-title">E — FLOW BALANCE ANALYSIS</div>
+    <div class="panel-sub">Expected vs actual flow · Loss isolation · Pressure zone analysis · AI classification · 1,000 readings</div>
+  </div>
+
+  <div class="kpi-grid kpi-4">
+    <div class="kpi-card" style="--accent:#E53E3E"><div class="kpi-value">18.3%</div><div class="kpi-label">Avg Discrepancy %</div><div class="kpi-sub">Expected vs actual flow</div></div>
+    <div class="kpi-card" style="--accent:#F5C518"><div class="kpi-value">1442</div><div class="kpi-label">Avg Discrepancy Volume</div><div class="kpi-sub">Mixed units (flow)</div></div>
+    <div class="kpi-card" style="--accent:#00B4A6"><div class="kpi-value">3</div><div class="kpi-label">Utility Streams</div><div class="kpi-sub">Water · Power · Gas</div></div>
+    <div class="kpi-card" style="--accent:#3ECF8E"><div class="kpi-value">1,000</div><div class="kpi-label">Flow Readings</div><div class="kpi-sub">DMA · Feeder · Pipeline</div></div>
+  </div>
+
+  <div class="chart-grid chart-3">
+    <div class="chart-box"><div class="chart-title">AI Loss Isolation Status</div><div class="chart-wrap"><canvas id="eIsoChart"></canvas></div></div>
+    <div class="chart-box"><div class="chart-title">Flow Readings by Utility</div><div class="chart-wrap"><canvas id="eUtilChart"></canvas></div></div>
+    <div class="chart-box"><div class="chart-title">Top 5 Loss Types Detected</div><div class="chart-wrap"><canvas id="eLtypeChart"></canvas></div></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ PANEL F ══ -->
+<div class="panel" id="pF">
+  <div class="panel-header">
+    <div class="panel-title">F — EMISSIONS DASHBOARD</div>
+    <div class="panel-sub">CO₂ reduction · ESG targets · Regulatory progress · Utility vs target · Carbon credits AED</div>
+  </div>
+
+  <div class="kpi-grid kpi-4">
+    <div class="kpi-card" style="--accent:#3ECF8E"><div class="kpi-value">77.5%</div><div class="kpi-label">Avg ESG Score</div><div class="kpi-sub">vs 85% target</div></div>
+    <div class="kpi-card" style="--accent:#00B4A6"><div class="kpi-value">49.1k T</div><div class="kpi-label">CO₂ Saved (Tonnes)</div><div class="kpi-sub">Total reduction achieved</div></div>
+    <div class="kpi-card" style="--accent:#F5C518"><div class="kpi-value">AED 2.98M</div><div class="kpi-label">Carbon Credits</div><div class="kpi-sub">Revenue from efficiency</div></div>
+    <div class="kpi-card" style="--accent:#1A8FE3"><div class="kpi-value">83.0%</div><div class="kpi-label">Regulatory Compliance</div><div class="kpi-sub"></div></div>
+  </div>
+
+  <div class="chart-grid chart-3">
+    <div class="chart-box"><div class="chart-title">Regulatory Status</div><div class="chart-wrap"><canvas id="fRegChart"></canvas></div></div>
+    <div class="chart-box"><div class="chart-title">ESG by Utility Type</div><div class="chart-wrap"><canvas id="fUtilChart"></canvas></div></div>
+    <div class="chart-box"><div class="chart-title">Top Zones by ESG Score</div><div class="chart-wrap"><canvas id="fZoneChart"></canvas></div></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ PANEL G ══ -->
+<div class="panel" id="pG">
+  <div class="panel-header">
+    <div class="panel-title">G — LOSS ZONE DETAIL 360°</div>
+    <div class="panel-sub">Drill-down · Root cause · Repair history · Projected saving · F01/F02/F03 fully cross-referenced</div>
+  </div>
+
+  <div class="kpi-grid kpi-4">
+    <div class="kpi-card" style="--accent:#E53E3E"><div class="kpi-value">AED 12638</div><div class="kpi-label">Avg Daily Loss/Zone</div><div class="kpi-sub">Per zone segment</div></div>
+    <div class="kpi-card" style="--accent:#3ECF8E"><div class="kpi-value">AED 264.37M</div><div class="kpi-label">Projected Savings</div><div class="kpi-sub">If all repairs executed</div></div>
+    <div class="kpi-card" style="--accent:#F5C518"><div class="kpi-value">14.9%</div><div class="kpi-label">Avg Technical Loss</div><div class="kpi-sub">Physical/infrastructure</div></div>
+    <div class="kpi-card" style="--accent:#ED8936"><div class="kpi-value">7.8%</div><div class="kpi-label">Avg Commercial Loss</div><div class="kpi-sub">Billing/meter/apparent</div></div>
+  </div>
+
+  <div class="chart-grid chart-3">
+    <div class="chart-box"><div class="chart-title">Top 5 Root Causes</div><div class="chart-wrap"><canvas id="gRcChart"></canvas></div></div>
+    <div class="chart-box"><div class="chart-title">Drill-Down Status</div><div class="chart-wrap"><canvas id="gDdChart"></canvas></div></div>
+    <div class="chart-box"><div class="chart-title">Loss Zones by Utility</div><div class="chart-wrap"><canvas id="gUtilChart"></canvas></div></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ PANEL H ══ -->
+<div class="panel" id="pH">
+  <div class="panel-header">
+    <div class="panel-title">H — NRW TREND & PERFORMANCE</div>
+    <div class="panel-sub">12-month NRW % vs target · All utility types · YoY improvement · Intervention tracking</div>
+  </div>
+
+  <div class="kpi-grid kpi-4">
+    <div class="kpi-card" style="--accent:#1A8FE3"><div class="kpi-value">10.2%</div><div class="kpi-label">Avg NRW % (All)</div><div class="kpi-sub">Water · Power · Gas blended</div></div>
+    <div class="kpi-card" style="--accent:#3ECF8E"><div class="kpi-value">1.0% ↓</div><div class="kpi-label">YoY Improvement</div><div class="kpi-sub">Year-on-year reduction</div></div>
+    <div class="kpi-card" style="--accent:#F5C518"><div class="kpi-value">15% / 5% / 3%</div><div class="kpi-label">Targets</div><div class="kpi-sub">Water / Power / Gas</div></div>
+    <div class="kpi-card" style="--accent:#00B4A6"><div class="kpi-value">36</div><div class="kpi-label">Months Tracked</div><div class="kpi-sub">Full historical window</div></div>
+  </div>
+
+  <div class="chart-box full" style="margin-bottom:16px;">
+    <div class="chart-title">12-Month NRW % Trend by Utility — vs Target Lines</div>
+    <div class="chart-wrap tall"><canvas id="hNrwTrend"></canvas></div>
+  </div>
+
+  <div class="chart-grid chart-2">
+    <div class="chart-box"><div class="chart-title">Performance Band Distribution</div><div class="chart-wrap"><canvas id="hBandChart"></canvas></div></div>
+    <div class="chart-box"><div class="chart-title">Intervention Applied</div><div class="chart-wrap"><canvas id="hIntervChart"></canvas></div></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ PANEL I ══ -->
+<div class="panel" id="pI">
+  <div class="panel-header">
+    <div class="panel-title">I — LOSS TYPE BREAKDOWN</div>
+    <div class="panel-sub">Technical / Commercial / Apparent / Pipe Burst / Meter Error · AI classification · Recovery value · </div>
+  </div>
+
+  <div class="kpi-grid kpi-4">
+    <div class="kpi-card" style="--accent:#E53E3E"><div class="kpi-value">AED 88.94M</div><div class="kpi-label">Total Identified Loss</div><div class="kpi-sub">All types · all utilities</div></div>
+    <div class="kpi-card" style="--accent:#3ECF8E"><div class="kpi-value">AED 24.57M</div><div class="kpi-label">Loss Recovered</div><div class="kpi-sub">Through repairs & actions</div></div>
+    <div class="kpi-card" style="--accent:#F5C518"><div class="kpi-value">27.6%</div><div class="kpi-label">Recovery Rate</div><div class="kpi-sub">% of loss recovered</div></div>
+    <div class="kpi-card" style="--accent:#00B4A6"><div class="kpi-value">5+</div><div class="kpi-label">Loss Categories</div><div class="kpi-sub">Technical · Commercial · Apparent</div></div>
+  </div>
+
+  <div class="chart-grid chart-2">
+    <div class="chart-box"><div class="chart-title">Loss by Type</div><div class="chart-wrap"><canvas id="iLtypeChart"></canvas></div></div>
+    <div class="chart-box"><div class="chart-title">AI Classification Distribution</div><div class="chart-wrap"><canvas id="iAiChart"></canvas></div></div>
+  </div>
+  <div class="chart-grid chart-2">
+    <div class="chart-box"><div class="chart-title">Detection Method</div><div class="chart-wrap"><canvas id="iDetectChart"></canvas></div></div>
+    <div class="chart-box"><div class="chart-title">Repair Status</div><div class="chart-wrap"><canvas id="iRstatChart"></canvas></div></div>
+  </div>
+</div>
+
+</div><!-- /main -->
+<div class="footer">
+  Lumina AI · F04 Loss Reduction · MVP Prototype ·  ·   ·  ·  ·  · 5-min WebSocket refresh
+</div>
+
+<script>
+const NAV='#0D2D52',TEAL='#00B4A6',GOLD='#F5C518',GREEN='#3ECF8E',BLUE='#1A8FE3',RED='#E53E3E',ORANGE='#ED8936',PURPLE='#805AD5';
+const PALETTE=[BLUE,TEAL,GOLD,GREEN,ORANGE,RED,PURPLE,'#F56565','#68D391','#63B3ED'];
+const GRID={color:'rgba(255,255,255,0.05)'};const TICK={color:'#7A9BB5',font:{size:10}};
+const doughOpts=()=>({responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{color:'#A0B8CC',font:{size:10},boxWidth:12}}}});
+const barOpts=(ymin)=>({responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:GRID,ticks:TICK},y:{grid:GRID,ticks:TICK,min:ymin}}});
+const hbarOpts=()=>({responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:GRID,ticks:TICK},y:{grid:GRID,ticks:TICK}}});
+
+function showPanel(id,el){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-link').forEach(n=>n.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  el.classList.add('active');
+  if(id==='pB')setTimeout(initMap,100);
+}
+
+// ── Panel A ───────────────────────────────────────────────────────────────
+new Chart(document.getElementById('aNrwTrend'),{type:'line',data:{
+  labels:["2025-07", "2025-08", "2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06"],
+  datasets:[
+    {label:'Water NRW%',data:[19.2, 19.2, 17.7, 18.7, 17.5, 19.3, 16.7, 17.4, 17.8, 17.3, 18.6, 18.9],borderColor:BLUE,backgroundColor:'rgba(26,143,227,0.1)',fill:true,tension:.4,pointRadius:2},
+    {label:'Power Loss%',data:[7.0, 6.9, 6.1, 6.6, 6.8, 7.5, 7.1, 7.1, 7.6, 7.3, 7.0, 7.1],borderColor:GOLD,backgroundColor:'rgba(245,197,24,0.1)',fill:true,tension:.4,pointRadius:2},
+    {label:'Gas Loss%',data:[3.8, 4.3, 3.9, 3.4, 3.8, 3.9, 4.0, 3.5, 4.6, 3.2, 3.7, 3.7],borderColor:GREEN,backgroundColor:'rgba(62,207,142,0.1)',fill:true,tension:.4,pointRadius:2},
+    {label:'Water Target (15%)',data:Array(12).fill(15),borderColor:'rgba(26,143,227,0.4)',borderDash:[6,4],pointRadius:0},
+    {label:'Power Target (5%)',data:Array(12).fill(5),borderColor:'rgba(245,197,24,0.4)',borderDash:[6,4],pointRadius:0},
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:'#A0B8CC',font:{size:10}}}},scales:{x:{grid:GRID,ticks:{...TICK,maxRotation:45}},y:{grid:GRID,ticks:TICK}}}});
+
+// ── Panel B ───────────────────────────────────────────────────────────────
+new Chart(document.getElementById('bStatusChart'),{type:'doughnut',data:{labels:["Active", "Under Investigation", "Resolved", "Repair Scheduled"],datasets:[{data:[451, 223, 101, 225],backgroundColor:[RED,ORANGE,GOLD,GREEN]}]},options:doughOpts()});
+new Chart(document.getElementById('bUtilChart'),{type:'doughnut',data:{labels:["Water", "Power", "Gas"],datasets:[{data:[590, 307, 103],backgroundColor:[BLUE,TEAL,ORANGE]}]},options:doughOpts()});
+
+// ── Panel C ───────────────────────────────────────────────────────────────
+new Chart(document.getElementById('cTrendChart'),{type:'doughnut',data:{labels:["Stable", "Improving", "Worsening"],datasets:[{data:[406, 297, 297],backgroundColor:[GREEN,BLUE,RED]}]},options:doughOpts()});
+new Chart(document.getElementById('cRepairChart'),{type:'doughnut',data:{labels:["Pending", "Completed", "In Progress", "Scheduled"],datasets:[{data:[406, 141, 216, 237],backgroundColor:[ORANGE,BLUE,GOLD,GREEN]}]},options:doughOpts()});
+new Chart(document.getElementById('cUtilChart'),{type:'doughnut',data:{labels:["Water", "Power", "Gas"],datasets:[{data:[599, 295, 106],backgroundColor:[BLUE,TEAL,ORANGE]}]},options:doughOpts()});
+
+// ── Panel D ───────────────────────────────────────────────────────────────
+new Chart(document.getElementById('dSavTrend'),{type:'bar',data:{labels:["2025-07", "2025-08", "2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06"],datasets:[{label:'YTD Savings (AED M)',data:[148.13, 115.71, 117.3, 128.55, 89.2, 44.06, 71.24, 35.6, 32.78, 21.58, 11.86, 0.91],backgroundColor:GREEN+'99',borderColor:GREEN,borderWidth:1,borderRadius:4}]},options:{...barOpts(0),plugins:{legend:{display:false}}}});
+new Chart(document.getElementById('dStatusChart'),{type:'doughnut',data:{labels:["Completed", "In Progress", "Scheduled", "Cancelled"],datasets:[{data:[657, 187, 132, 24],backgroundColor:[GREEN,BLUE,GOLD,RED]}]},options:doughOpts()});
+new Chart(document.getElementById('dUtilChart'),{type:'doughnut',data:{labels:["Gas", "Power", "Water"],datasets:[{data:[98, 293, 609],backgroundColor:[BLUE,TEAL,ORANGE]}]},options:doughOpts()});
+
+// ── Panel E ───────────────────────────────────────────────────────────────
+new Chart(document.getElementById('eIsoChart'),{type:'doughnut',data:{labels:["Confirmed", "Suspected", "Undetected"],datasets:[{data:[575, 345, 80],backgroundColor:[GREEN,ORANGE,RED]}]},options:doughOpts()});
+new Chart(document.getElementById('eUtilChart'),{type:'doughnut',data:{labels:["Water", "Power", "Gas"],datasets:[{data:[604, 305, 91],backgroundColor:[BLUE,TEAL,ORANGE]}]},options:doughOpts()});
+new Chart(document.getElementById('eLtypeChart'),{type:'bar',data:{labels:["Apparent Loss", "Billing Error", "Illegal Connection", "Pipe Burst", "Meter Under-registration"],datasets:[{label:'Count',data:[134, 110, 108, 79, 77],backgroundColor:PALETTE,borderRadius:4}]},options:{...hbarOpts()}});
+
+// ── Panel F ───────────────────────────────────────────────────────────────
+new Chart(document.getElementById('fRegChart'),{type:'doughnut',data:{labels:["Compliant", "Pending Review", "Non-Compliant"],datasets:[{data:[678, 159, 163],backgroundColor:[GREEN,RED,ORANGE]}]},options:doughOpts()});
+new Chart(document.getElementById('fUtilChart'),{type:'doughnut',data:{labels:["Power", "Water", "Gas"],datasets:[{data:[362, 484, 154],backgroundColor:[BLUE,TEAL,ORANGE]}]},options:doughOpts()});
+new Chart(document.getElementById('fZoneChart'),{type:'bar',data:{labels:["Downtown", "Al Qusis Ind.", "Deira", "Al Nahda", "Al Ain City", "Bur Dubai", "Al Mamzar", "Mirdif"],datasets:[{label:'ESG Score',data:[80.7, 80.3, 79.8, 79.8, 79.7, 79.5, 79.1, 78.9],backgroundColor:PALETTE,borderRadius:4}]},options:{...hbarOpts()}});
+
+// ── Panel G ───────────────────────────────────────────────────────────────
+new Chart(document.getElementById('gRcChart'),{type:'bar',data:{labels:["Joint Failure", "Incorrect Meter Reading", "Pressure Surge", "Corrosion", "Illegal Tap"],datasets:[{label:'Occurrences',data:[94, 93, 93, 88, 87],backgroundColor:PALETTE,borderRadius:4}]},options:{...hbarOpts()}});
+new Chart(document.getElementById('gDdChart'),{type:'doughnut',data:{labels:["Inspected", "Pending", "Resolved", "Scheduled"],datasets:[{data:[290, 336, 115, 259],backgroundColor:[GREEN,ORANGE,RED,BLUE]}]},options:doughOpts()});
+new Chart(document.getElementById('gUtilChart'),{type:'doughnut',data:{labels:["Power", "Water", "Gas"],datasets:[{data:[287, 602, 111],backgroundColor:[BLUE,TEAL,ORANGE]}]},options:doughOpts()});
+
+// ── Panel H ───────────────────────────────────────────────────────────────
+new Chart(document.getElementById('hNrwTrend'),{type:'line',data:{
+  labels:["2025-07", "2025-08", "2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06"],
+  datasets:[
+    {label:'Water NRW%',data:[20.8, 21.7, 23.4, 17.4, 17.1, 17.9, 15.8, 18.6, 18.1, 18.7, 18.1, 22.4],borderColor:BLUE,tension:.4,pointRadius:3,fill:false},
+    {label:'Power Loss%',data:[8.1, 8.9, 10.1, 7.0, 7.2, 7.0, 6.7, 6.7, 7.0, 7.1, 7.4, 8.2],borderColor:GOLD,tension:.4,pointRadius:3,fill:false},
+    {label:'Gas Loss%',data:[4.5, 4.6, 4.7, 3.9, 4.0, 4.0, 4.2, 4.3, 4.2, 4.2, 3.9, 4.3],borderColor:GREEN,tension:.4,pointRadius:3,fill:false},
+    {label:'Water Target 15%',data:Array(12).fill(15),borderColor:'rgba(26,143,227,0.4)',borderDash:[6,4],pointRadius:0},
+    {label:'Power Target 5%',data:Array(12).fill(5),borderColor:'rgba(245,197,24,0.4)',borderDash:[6,4],pointRadius:0},
+    {label:'Gas Target 3%',data:Array(12).fill(3),borderColor:'rgba(62,207,142,0.4)',borderDash:[6,4],pointRadius:0},
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:'#A0B8CC',font:{size:10}}}},scales:{x:{grid:GRID,ticks:{...TICK,maxRotation:45}},y:{grid:GRID,ticks:TICK}}}});
+new Chart(document.getElementById('hBandChart'),{type:'doughnut',data:{labels:["Non-Compliant", "At Risk", "Good", "Excellent"],datasets:[{data:[122, 580, 218, 80],backgroundColor:[GREEN,BLUE,ORANGE,RED]}]},options:doughOpts()});
+new Chart(document.getElementById('hIntervChart'),{type:'doughnut',data:{labels:["No", "Yes"],datasets:[{data:[718, 282],backgroundColor:[TEAL,NAV]}]},options:doughOpts()});
+
+// ── Panel I ───────────────────────────────────────────────────────────────
+new Chart(document.getElementById('iLtypeChart'),{type:'doughnut',data:{labels:["Unmetered Supply", "Technical Distribution Loss", "Apparent Loss", "Tank Overflow", "Unauthorized Use", "Meter Tampering", "Billing Error", "Meter Error", "Background Leakage", "Illegal Connection", "Joint Failure", "Pipe Leak", "Meter Under-registration", "Line Loss", "Unaccounted Use", "Pipe Burst", "Transformer Iron Loss"],datasets:[{data:[47, 41, 133, 74, 72, 35, 109, 17, 67, 115, 21, 16, 68, 45, 22, 76, 42],backgroundColor:PALETTE}]},options:doughOpts()});
+new Chart(document.getElementById('iAiChart'),{type:'doughnut',data:{labels:["Technical Loss", "Physical Leak", "Meter Error", "Apparent Loss", "Commercial Loss"],datasets:[{data:[342, 207, 102, 158, 191],backgroundColor:[BLUE,ORANGE,GOLD,GREEN,RED]}]},options:doughOpts()});
+new Chart(document.getElementById('iDetectChart'),{type:'bar',data:{labels:["Customer Report", "Field Inspection", "AI Anomaly", "DMA Flow Balance", "Smart Meter", "SCADA Alert"],datasets:[{label:'Count',data:[178, 165, 153, 151, 186, 167],backgroundColor:PALETTE,borderRadius:4}]},options:{...hbarOpts()}});
+new Chart(document.getElementById('iRstatChart'),{type:'doughnut',data:{labels:["Completed", "Pending", "In Progress", "Cancelled"],datasets:[{data:[419, 344, 185, 52],backgroundColor:[GREEN,BLUE,GOLD,RED]}]},options:doughOpts()});
+
+// ── Leaflet Map ───────────────────────────────────────────────────────────
+let _mapDone=false;
+function initMap(){
+  if(_mapDone)return; _mapDone=true;
+  const map=L.map('lr-map').setView([24.9,55.1],9);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OSM',maxZoom:15}).addTo(map);
+  const pts=[{"id": "HS-F04-0665", "zone": "Al Nahda", "seg": "FDR-AL -01", "util": "Power", "asset": "AST-OHL-0665", "lat": 25.296452, "lon": 55.390594, "loss_aed": 229709.0, "rank": 665, "status": "Active", "hz": "", "hs_f01": 65.6}, {"id": "HS-F04-0840", "zone": "Al Mamzar", "seg": "FDR-AL -02", "util": "Power", "asset": "AST-CAP-0840", "lat": 25.296953, "lon": 55.351118, "loss_aed": 228984.0, "rank": 840, "status": "Active", "hz": "", "hs_f01": 65.3}, {"id": "HS-F04-0668", "zone": "Al Qusis Ind.", "seg": "FDR-AL -01", "util": "Power", "asset": "AST-UGC-0668", "lat": 25.251198, "lon": 55.372183, "loss_aed": 227795.0, "rank": 668, "status": "Under Investigation", "hz": "", "hs_f01": 46.0}, {"id": "HS-F04-0271", "zone": "Al Qusais", "seg": "FDR-AL -03", "util": "Power", "asset": "AST-OHL-0271", "lat": 25.287318, "lon": 55.357855, "loss_aed": 227157.0, "rank": 271, "status": "Active", "hz": "", "hs_f01": 77.0}, {"id": "HS-F04-0421", "zone": "Khalidiyah", "seg": "DMA-AL -04", "util": "Water", "asset": "AST-PMT-0421", "lat": 24.478268, "lon": 54.368376, "loss_aed": 224143.0, "rank": 421, "status": "Active", "hz": "", "hs_f01": 69.4}, {"id": "HS-F04-0574", "zone": "Bur Dubai", "seg": "FDR-AL -03", "util": "Power", "asset": "AST-LVC-0574", "lat": 25.26904, "lon": 55.303582, "loss_aed": 224025.0, "rank": 574, "status": "Under Investigation", "hz": "", "hs_f01": 70.6}, {"id": "HS-F04-0700", "zone": "Al Murabba", "seg": "DMA-AL -02", "util": "Water", "asset": "AST-OHL-0700", "lat": 24.688675, "lon": 46.717844, "loss_aed": 223706.0, "rank": 700, "status": "Under Investigation", "hz": "", "hs_f01": 64.2}, {"id": "HS-F04-0238", "zone": "Al Qusis Ind.", "seg": "DMA-AL -04", "util": "Water", "asset": "AST-SW-0238", "lat": 25.261548, "lon": 55.353687, "loss_aed": 223609.0, "rank": 238, "status": "Under Investigation", "hz": "", "hs_f01": 55.6}, {"id": "HS-F04-0979", "zone": "Al Qusais", "seg": "DMA-AL -03", "util": "Water", "asset": "AST-MVC-0979", "lat": 25.260435, "lon": 55.378458, "loss_aed": 223563.0, "rank": 979, "status": "Repair Scheduled", "hz": "", "hs_f01": 72.3}, {"id": "HS-F04-0211", "zone": "Al Dhafra", "seg": "DMA-AL -03", "util": "Water", "asset": "AST-DT-0211", "lat": 23.495027, "lon": 53.960275, "loss_aed": 223386.0, "rank": 211, "status": "Active", "hz": "Red", "hs_f01": 50.4}, {"id": "HS-F04-0546", "zone": "Mirdif", "seg": "DMA-AL -02", "util": "Water", "asset": "AST-RMU-0546", "lat": 25.213406, "lon": 55.430763, "loss_aed": 223065.0, "rank": 546, "status": "Under Investigation", "hz": "", "hs_f01": 64.5}, {"id": "HS-F04-0272", "zone": "Al Barsha South", "seg": "FDR-AL -01", "util": "Power", "asset": "AST-PMT-0272", "lat": 25.050687, "lon": 55.194362, "loss_aed": 222894.0, "rank": 272, "status": "Active", "hz": "", "hs_f01": 43.8}, {"id": "HS-F04-0542", "zone": "Al Qusis Ind.", "seg": "DMA-AL -02", "util": "Water", "asset": "AST-PMT-0542", "lat": 25.251498, "lon": 55.36909, "loss_aed": 222867.0, "rank": 542, "status": "Resolved", "hz": "", "hs_f01": 85.9}, {"id": "HS-F04-0878", "zone": "Al Quoz", "seg": "FDR-AL -03", "util": "Power", "asset": "AST-UGC-0878", "lat": 25.151252, "lon": 55.225483, "loss_aed": 222807.0, "rank": 878, "status": "Repair Scheduled", "hz": "", "hs_f01": 47.6}, {"id": "HS-F04-0306", "zone": "Al Karama", "seg": "FDR-AL -02", "util": "Power", "asset": "AST-OHL-0306", "lat": 25.247645, "lon": 55.278273, "loss_aed": 222778.0, "rank": 306, "status": "Active", "hz": "", "hs_f01": 49.8}, {"id": "HS-F04-0883", "zone": "Al Warqa", "seg": "DMA-AL -04", "util": "Water", "asset": "AST-CB-0883", "lat": 25.218335, "lon": 55.408375, "loss_aed": 221741.0, "rank": 883, "status": "Active", "hz": "", "hs_f01": 60.6}, {"id": "HS-F04-0831", "zone": "Al Mamzar", "seg": "DMA-AL -03", "util": "Water", "asset": "AST-UGC-0831", "lat": 25.313676, "lon": 55.356148, "loss_aed": 221733.0, "rank": 831, "status": "Under Investigation", "hz": "", "hs_f01": 72.5}, {"id": "HS-F04-0474", "zone": "Al Mankhool", "seg": "DMA-AL -05", "util": "Water", "asset": "AST-DT-0474", "lat": 25.261077, "lon": 55.290228, "loss_aed": 221328.0, "rank": 474, "status": "Active", "hz": "", "hs_f01": 87.3}, {"id": "HS-F04-0156", "zone": "Al Barsha", "seg": "FDR-AL -03", "util": "Power", "asset": "AST-PT-0156", "lat": 25.11453, "lon": 55.191317, "loss_aed": 221241.0, "rank": 156, "status": "Repair Scheduled", "hz": "", "hs_f01": 71.3}, {"id": "HS-F04-0793", "zone": "Al Qusis Ind.", "seg": "DMA-AL -02", "util": "Water", "asset": "AST-SW-0793", "lat": 25.253776, "lon": 55.353298, "loss_aed": 220770.0, "rank": 793, "status": "Active", "hz": "", "hs_f01": 73.6}, {"id": "HS-F04-0864", "zone": "Al Twar", "seg": "DMA-AL -03", "util": "Water", "asset": "AST-CB-0864", "lat": 25.273531, "lon": 55.348761, "loss_aed": 220325.0, "rank": 864, "status": "Repair Scheduled", "hz": "", "hs_f01": 50.7}, {"id": "HS-F04-0884", "zone": "Al Qusais", "seg": "FDR-AL -01", "util": "Power", "asset": "AST-MVC-0884", "lat": 25.263609, "lon": 55.38094, "loss_aed": 219849.0, "rank": 884, "status": "Active", "hz": "", "hs_f01": 63.3}, {"id": "HS-F04-0338", "zone": "Al Quoz", "seg": "DMA-AL -05", "util": "Water", "asset": "AST-MVC-0338", "lat": 25.141352, "lon": 55.216705, "loss_aed": 219451.0, "rank": 338, "status": "Active", "hz": "", "hs_f01": 63.4}, {"id": "HS-F04-0011", "zone": "Dubai Investments", "seg": "DMA-AL -04", "util": "Water", "asset": "AST-CB-0011", "lat": 25.043862, "lon": 55.325344, "loss_aed": 218812.0, "rank": 11, "status": "Resolved", "hz": "", "hs_f01": 90.1}, {"id": "HS-F04-0243", "zone": "Al Barsha", "seg": "DMA-AL -03", "util": "Water", "asset": "AST-MVC-0243", "lat": 25.111278, "lon": 55.196139, "loss_aed": 218488.0, "rank": 243, "status": "Repair Scheduled", "hz": "", "hs_f01": 62.2}, {"id": "HS-F04-0779", "zone": "Al Mamzar", "seg": "DMA-AL -05", "util": "Water", "asset": "AST-LVC-0779", "lat": 25.28653, "lon": 55.348713, "loss_aed": 218431.0, "rank": 779, "status": "Repair Scheduled", "hz": "", "hs_f01": 51.3}, {"id": "HS-F04-0225", "zone": "Al Karama", "seg": "FDR-AL -03", "util": "Power", "asset": "AST-PMT-0225", "lat": 25.224627, "lon": 55.293583, "loss_aed": 218109.0, "rank": 225, "status": "Active", "hz": "", "hs_f01": 47.8}, {"id": "HS-F04-0766", "zone": "Al Qusais", "seg": "FDR-AL -03", "util": "Power", "asset": "AST-CAP-0766", "lat": 25.268772, "lon": 55.352657, "loss_aed": 217964.0, "rank": 766, "status": "Repair Scheduled", "hz": "", "hs_f01": 89.6}, {"id": "HS-F04-0645", "zone": "Jebel Ali", "seg": "DMA-AL -04", "util": "Water", "asset": "AST-MVC-0645", "lat": 25.007035, "lon": 55.072557, "loss_aed": 216469.0, "rank": 645, "status": "Active", "hz": "", "hs_f01": 81.1}, {"id": "HS-F04-0312", "zone": "Al Warqa", "seg": "DMA-AL -03", "util": "Water", "asset": "AST-FP-0312", "lat": 25.218206, "lon": 55.40335, "loss_aed": 216043.0, "rank": 312, "status": "Active", "hz": "", "hs_f01": 45.0}, {"id": "HS-F04-0535", "zone": "Al Mankhool", "seg": "DMA-AL -02", "util": "Water", "asset": "AST-OHL-0535", "lat": 25.229551, "lon": 55.278161, "loss_aed": 216005.0, "rank": 535, "status": "Active", "hz": "", "hs_f01": 57.8}, {"id": "HS-F04-0174", "zone": "Mirdif", "seg": "DMA-AL -02", "util": "Water", "asset": "AST-DT-0174", "lat": 25.206158, "lon": 55.412292, "loss_aed": 215557.0, "rank": 174, "status": "Active", "hz": "", "hs_f01": 44.8}, {"id": "HS-F04-0606", "zone": "Mirdif", "seg": "DMA-AL -03", "util": "Water", "asset": "AST-CB-0606", "lat": 25.20858, "lon": 55.414229, "loss_aed": 215533.0, "rank": 606, "status": "Active", "hz": "", "hs_f01": 58.1}, {"id": "HS-F04-0610", "zone": "Deira", "seg": "FDR-AL -01", "util": "Power", "asset": "AST-CB-0610", "lat": 25.285199, "lon": 55.293404, "loss_aed": 215093.0, "rank": 610, "status": "Resolved", "hz": "", "hs_f01": 73.9}, {"id": "HS-F04-0693", "zone": "Mirdif", "seg": "DMA-AL -04", "util": "Water", "asset": "AST-MVC-0693", "lat": 25.212509, "lon": 55.422737, "loss_aed": 214952.0, "rank": 693, "status": "Under Investigation", "hz": "", "hs_f01": 55.2}, {"id": "HS-F04-0742", "zone": "Dubai Investments", "seg": "DMA-AL -01", "util": "Water", "asset": "AST-PMT-0742", "lat": 25.037043, "lon": 55.351158, "loss_aed": 214775.0, "rank": 742, "status": "Under Investigation", "hz": "", "hs_f01": 69.4}, {"id": "HS-F04-0708", "zone": "Al Murabba", "seg": "DMA-AL -05", "util": "Water", "asset": "AST-MVC-0708", "lat": 24.687211, "lon": 46.729104, "loss_aed": 213768.0, "rank": 708, "status": "Active", "hz": "", "hs_f01": 80.4}, {"id": "HS-F04-0597", "zone": "Al Warqa", "seg": "DMA-AL -02", "util": "Water", "asset": "AST-PMT-0597", "lat": 25.213244, "lon": 55.421256, "loss_aed": 213672.0, "rank": 597, "status": "Active", "hz": "", "hs_f01": 90.7}, {"id": "HS-F04-0375", "zone": "Al Qusais", "seg": "DMA-AL -05", "util": "Water", "asset": "AST-CB-0375", "lat": 25.25684, "lon": 55.360432, "loss_aed": 213646.0, "rank": 375, "status": "Active", "hz": "", "hs_f01": 75.8}, {"id": "HS-F04-0834", "zone": "Al Twar", "seg": "FDR-AL -03", "util": "Power", "asset": "AST-MVC-0834", "lat": 25.27191, "lon": 55.372713, "loss_aed": 213556.0, "rank": 834, "status": "Repair Scheduled", "hz": "", "hs_f01": 63.7}, {"id": "HS-F04-0798", "zone": "Deira", "seg": "DMA-AL -05", "util": "Water", "asset": "AST-RMU-0798", "lat": 25.281891, "lon": 55.299359, "loss_aed": 213236.0, "rank": 798, "status": "Under Investigation", "hz": "", "hs_f01": 51.2}, {"id": "HS-F04-0648", "zone": "Al Nahda", "seg": "FDR-AL -02", "util": "Power", "asset": "AST-CAP-0648", "lat": 25.29029, "lon": 55.365532, "loss_aed": 212918.0, "rank": 648, "status": "Under Investigation", "hz": "Red", "hs_f01": 38.6}, {"id": "HS-F04-0223", "zone": "Al Mizhar", "seg": "DMA-AL -01", "util": "Water", "asset": "AST-OHL-0223", "lat": 25.202419, "lon": 55.409604, "loss_aed": 212858.0, "rank": 223, "status": "Repair Scheduled", "hz": "", "hs_f01": 63.2}, {"id": "HS-F04-0850", "zone": "Deira", "seg": "FDR-AL -03", "util": "Power", "asset": "AST-UGC-0850", "lat": 25.264614, "lon": 55.322738, "loss_aed": 212802.0, "rank": 850, "status": "Under Investigation", "hz": "", "hs_f01": 49.6}, {"id": "HS-F04-0756", "zone": "Jebel Ali", "seg": "DMA-AL -02", "util": "Water", "asset": "AST-PMT-0756", "lat": 24.979044, "lon": 55.076543, "loss_aed": 212782.0, "rank": 756, "status": "Active", "hz": "", "hs_f01": 75.6}, {"id": "HS-F04-0153", "zone": "Al Ghusais", "seg": "FDR-AL -02", "util": "Power", "asset": "AST-RMU-0153", "lat": 25.279108, "lon": 55.361607, "loss_aed": 212541.0, "rank": 153, "status": "Repair Scheduled", "hz": "", "hs_f01": 65.2}, {"id": "HS-F04-0866", "zone": "Al Qusis Ind.", "seg": "FDR-AL -01", "util": "Power", "asset": "AST-OHL-0866", "lat": 25.282652, "lon": 55.37708, "loss_aed": 212541.0, "rank": 866, "status": "Active", "hz": "", "hs_f01": 84.2}, {"id": "HS-F04-0838", "zone": "Al Qusais", "seg": "DMA-AL -03", "util": "Water", "asset": "AST-FP-0838", "lat": 25.254281, "lon": 55.347482, "loss_aed": 212405.0, "rank": 838, "status": "Under Investigation", "hz": "", "hs_f01": 67.0}, {"id": "HS-F04-0849", "zone": "Mushrif", "seg": "DMA-AL -04", "util": "Water", "asset": "AST-FP-0849", "lat": 25.212447, "lon": 55.435266, "loss_aed": 212309.0, "rank": 849, "status": "Under Investigation", "hz": "", "hs_f01": 69.5}, {"id": "HS-F04-0262", "zone": "Al Ain City", "seg": "FDR-AL -03", "util": "Power", "asset": "AST-MVC-0262", "lat": 24.227297, "lon": 55.749323, "loss_aed": 211932.0, "rank": 262, "status": "Repair Scheduled", "hz": "", "hs_f01": 45.4}, {"id": "HS-F04-0569", "zone": "Dubai Investments", "seg": "DMA-AL -05", "util": "Water", "asset": "AST-UGC-0569", "lat": 25.063971, "lon": 55.35152, "loss_aed": 211617.0, "rank": 569, "status": "Repair Scheduled", "hz": "", "hs_f01": 89.6}, {"id": "HS-F04-0144", "zone": "Al Rashidiya", "seg": "DMA-AL -01", "util": "Water", "asset": "AST-RMU-0144", "lat": 25.212956, "lon": 55.39032, "loss_aed": 210951.0, "rank": 144, "status": "Under Investigation", "hz": "", "hs_f01": 64.7}, {"id": "HS-F04-0058", "zone": "Al Nahda", "seg": "DMA-AL -05", "util": "Water", "asset": "AST-MVC-0058", "lat": 25.292858, "lon": 55.362212, "loss_aed": 210258.0, "rank": 58, "status": "Active", "hz": "", "hs_f01": 62.5}, {"id": "HS-F04-0927", "zone": "Al Mamzar", "seg": "DMA-AL -02", "util": "Water", "asset": "AST-MVC-0927", "lat": 25.294657, "lon": 55.348079, "loss_aed": 210245.0, "rank": 927, "status": "Under Investigation", "hz": "", "hs_f01": 50.2}, {"id": "HS-F04-0994", "zone": "Al Quoz", "seg": "DMA-AL -01", "util": "Water", "asset": "AST-DT-0994", "lat": 25.161077, "lon": 55.212873, "loss_aed": 209972.0, "rank": 994, "status": "Active", "hz": "", "hs_f01": 87.9}, {"id": "HS-F04-0783", "zone": "Al Qusis Ind.", "seg": "FDR-AL -03", "util": "Power", "asset": "AST-DT-0783", "lat": 25.287731, "lon": 55.366811, "loss_aed": 209960.0, "rank": 783, "status": "Repair Scheduled", "hz": "", "hs_f01": 80.8}, {"id": "HS-F04-0160", "zone": "Al Warqa", "seg": "DMA-AL -02", "util": "Water", "asset": "AST-FP-0160", "lat": 25.223853, "lon": 55.418769, "loss_aed": 209958.0, "rank": 160, "status": "Resolved", "hz": "", "hs_f01": 81.9}, {"id": "HS-F04-0965", "zone": "Jumeirah", "seg": "DMA-AL -02", "util": "Water", "asset": "AST-OHL-0965", "lat": 25.213027, "lon": 55.285109, "loss_aed": 208963.0, "rank": 965, "status": "Repair Scheduled", "hz": "", "hs_f01": 80.5}, {"id": "HS-F04-0510", "zone": "Al Mamzar", "seg": "DMA-AL -02", "util": "Water", "asset": "AST-MVC-0510", "lat": 25.292084, "lon": 55.341098, "loss_aed": 208919.0, "rank": 510, "status": "Resolved", "hz": "", "hs_f01": 54.5}, {"id": "HS-F04-0689", "zone": "Al Quoz", "seg": "DMA-AL -04", "util": "Water", "asset": "AST-LVC-0689", "lat": 25.170736, "lon": 55.222659, "loss_aed": 208763.0, "rank": 689, "status": "Under Investigation", "hz": "", "hs_f01": 61.8}];
+  pts.forEach(p=>{
+    const aed=p.loss_aed||0;
+    const col=aed>500000?'#E53E3E':aed>100000?'#ED8936':'#3ECF8E';
+    const r=aed>500000?12:aed>100000?8:5;
+    L.circleMarker([p.lat,p.lon],{radius:r,fillColor:col,color:'#fff',weight:1,fillOpacity:0.85})
+      .addTo(map)
+      .bindPopup('<b>'+p.id+'</b><br>Zone: '+p.zone+'<br>Segment: '+p.seg+'<br>Utility: '+p.util+'<br><b style="color:'+col+'">Loss: AED '+Number(aed).toLocaleString()+'/day</b><br>Status: '+p.status+'<br>AI Conf: '+p.hs_f01+'<br>F02 Heat: '+(p.hz||'N/A'));
+  });
+}
+</script>
+</body>
+</html>

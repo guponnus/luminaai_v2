@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Lumina AI &mdash; Field Safety Command Centre</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root{--nav:#0D2D52;--teal:#00B4A6;--gold:#F5C518;--green:#3ECF8E;--blue:#1A8FE3;
+  --red:#E53E3E;--orange:#ED8936;--purple:#805AD5;
+  --bg:#F0F4F8;--card:#FFFFFF;--text:#1A202C;--muted:#718096;--border:#E2E8F0;}
+*{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif}
+body{background:var(--bg);color:var(--text);min-height:100vh}
+.hdr{background:var(--nav);color:#fff;padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:60px;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+.hdr-logo{display:flex;align-items:center;gap:12px}
+.hdr-dot{width:36px;height:36px;background:var(--teal);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;color:#fff}
+.hdr-logo span{font-size:18px;font-weight:700;letter-spacing:.5px}
+.hdr-logo small{font-size:11px;color:rgba(255,255,255,.6);margin-left:8px}
+.hdr-badge{display:inline-block;background:var(--teal);color:#fff;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:700;margin-left:8px;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
+.hdr-meta{font-size:11px;color:rgba(255,255,255,.7);text-align:right;line-height:1.7}
+.panel-nav{background:var(--nav);border-top:1px solid rgba(255,255,255,.1);display:flex;overflow-x:auto;padding:0 12px}
+.panel-nav button{background:none;border:none;color:rgba(255,255,255,.6);padding:10px 16px;font-size:12px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap;transition:all .2s}
+.panel-nav button:hover,.panel-nav button.active{color:#fff;border-bottom-color:var(--teal)}
+.content{padding:20px;max-width:1600px;margin:0 auto}
+.panel{display:none}.panel.active{display:block}
+.kpi-row{display:grid;gap:14px;margin-bottom:18px}
+.kpi-2{grid-template-columns:repeat(2,1fr)}.kpi-3{grid-template-columns:repeat(3,1fr)}
+.kpi-4{grid-template-columns:repeat(4,1fr)}.kpi-5{grid-template-columns:repeat(5,1fr)}
+.kpi{background:var(--card);border-radius:10px;padding:16px 18px;border-left:4px solid var(--teal);box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.kpi.red{border-left-color:var(--red)}.kpi.gold{border-left-color:var(--gold)}
+.kpi.green{border-left-color:var(--green)}.kpi.blue{border-left-color:var(--blue)}
+.kpi.orange{border-left-color:var(--orange)}.kpi.purple{border-left-color:var(--purple)}
+.kpi label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.kpi .val{font-size:26px;font-weight:800;color:var(--text);line-height:1.1;margin:4px 0}
+.kpi .sub{font-size:11px;color:var(--muted)}
+.badge{display:inline-block;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:700;margin-top:4px}
+.badge-ok{background:#C6F6D5;color:#276749}.badge-warn{background:#FEFCBF;color:#744210}
+.badge-alert{background:#FED7D7;color:#822727}.badge-info{background:#BEE3F8;color:#1A365D}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px}
+.grid-31{display:grid;grid-template-columns:3fr 1fr;gap:16px;margin-bottom:16px}
+.card{background:var(--card);border-radius:10px;padding:18px;box-shadow:0 1px 4px rgba(0,0,0,.08);margin-bottom:16px}
+.card h3{font-size:13px;font-weight:700;color:var(--nav);margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid var(--border);display:flex;align-items:center;gap:6px}
+.chart-wrap{position:relative;height:220px}.chart-wrap-lg{position:relative;height:280px}.chart-wrap-sm{position:relative;height:160px}
+table{width:100%;border-collapse:collapse;font-size:11px}
+th{background:var(--nav);color:#fff;padding:8px 10px;text-align:left;font-weight:700;font-size:10px;letter-spacing:.3px}
+td{padding:7px 10px;border-bottom:1px solid var(--border)}
+tr:nth-child(even) td{background:#F7FAFC}tr:hover td{background:#EBF8FF}
+.p0{background:#FED7D7;color:#822727;border-radius:3px;padding:2px 6px;font-size:10px;font-weight:700}
+.p1{background:#FEEBC8;color:#7B341E;border-radius:3px;padding:2px 6px;font-size:10px;font-weight:700}
+.p2{background:#BEE3F8;color:#1A365D;border-radius:3px;padding:2px 6px;font-size:10px;font-weight:700}
+.p3{background:#C6F6D5;color:#276749;border-radius:3px;padding:2px 6px;font-size:10px;font-weight:700}
+#field-map{height:380px;border-radius:8px;overflow:hidden;border:2px solid var(--border)}
+.xref{background:#EBF8FF;color:var(--blue);border:1px solid #BEE3F8;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:600}
+.flight-card{background:#F7FAFC;border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;gap:10px}
+.flight-icon{width:34px;height:34px;background:var(--nav);border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;flex-shrink:0}
+.flight-info{flex:1;min-width:0}.flight-info strong{font-size:11px;font-weight:700}.flight-info p{font-size:10px;color:var(--muted)}
+.tbl-wrap{overflow-x:auto;max-height:320px;overflow-y:auto}
+footer{background:var(--nav);color:rgba(255,255,255,.5);text-align:center;padding:12px;font-size:11px;margin-top:24px}
+footer strong{color:rgba(255,255,255,.8)}
+@media(max-width:768px){.kpi-4,.kpi-5{grid-template-columns:repeat(2,1fr)}.grid-2,.grid-3,.grid-31{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <div class="hdr-logo">
+    <div class="hdr-dot">LA</div>
+    <div><span>Lumina AI</span><small>Field Safety Command Centre</small><span class="hdr-badge">&#11044; LIVE</span></div>
+  </div>
+  <div class="hdr-meta">
+    F03 &mdash; Field Safety &amp; Work Order Management<br>
+    <strong>1,000 Work Orders &middot; 1,000 Assets &middot; </strong><br>
+    Cross-linked: Asset Health Pillar (F01) &middot; 21 June 2026
+  </div>
+</div>
+<div class="panel-nav">
+  <button class="active" onclick="showPanel('A',this)">A &mdash; Safety KPIs</button>
+  <button onclick="showPanel('B',this)">B &mdash; AI Work Orders</button>
+  <button onclick="showPanel('C',this)">C &mdash; WO Breakdown</button>
+  <button onclick="showPanel('D',this)">D &mdash; Field Map</button>
+  <button onclick="showPanel('E',this)">E &mdash; Crew Optimizer</button>
+  <button onclick="showPanel('F',this)">F &mdash; Asset Risk Queue</button>
+  <button onclick="showPanel('G',this)">G &mdash; Job Card 360</button>
+  <button onclick="showPanel('H',this)">H &mdash; Safety &amp; SLA</button>
+  <button onclick="showPanel('I',this)">I &mdash; Drone Planner</button>
+</div>
+<div class="content">
+
+<!-- PANEL A -->
+<div id="panel-A" class="panel active">
+  <div class="kpi-row kpi-5">
+    <div class="kpi green"><label>Outages Prevented (1000 days)</label>
+      <div class="val">4,026</div>
+      <div class="sub">Avg 4.0/day</div>
+      <span class="badge badge-ok">&#8593; AI-Driven</span></div>
+    <div class="kpi orange"><label>Avg Crew Utilization</label>
+      <div class="val">81.1%</div><div class="sub">Target &ge;85%</div>
+      <span class="badge badge-warn">&#9888; Below Target</span></div>
+    <div class="kpi green"><label>SLA Compliance Rate</label>
+      <div class="val">95.1%</div><div class="sub">Target &ge;95%</div>
+      <span class="badge badge-ok">&#10003; Compliant</span></div>
+    <div class="kpi green"><label>Avg SAIDI (mins/cust)</label>
+      <div class="val">3.25</div><div class="sub">Target &le;4.0 mins</div>
+      <span class="badge badge-ok">&#10003; Target Met</span></div>
+    <div class="kpi blue"><label>Avg SAIFI (interruptions)</label>
+      <div class="val">0.1019</div><div class="sub">Per customer/year</div>
+      <span class="badge badge-info">IEEE 1366</span></div>
+  </div>
+  <div class="kpi-row kpi-4">
+    <div class="kpi"><label>Today &mdash; Crew Utilization</label><div class="val">72.6%</div><div class="sub">Live figure</div></div>
+    <div class="kpi"><label>Today &mdash; Active Work Orders</label><div class="val">24</div><div class="sub">Open + In Progress</div></div>
+    <div class="kpi"><label>Today &mdash; Drone Flights</label><div class="val">5</div><div class="sub">Scheduled today</div></div>
+    <div class="kpi orange"><label>Near-Miss Events (1000d)</label><div class="val">1036</div><div class="sub">Safety tracking</div><span class="badge badge-info">HSE Monitored</span></div>
+  </div>
+  <div class="grid-2">
+    <div class="card"><h3>&#128200; 30-Day Crew Utilization &amp; SLA Trend</h3><div class="chart-wrap"><canvas id="chartA1"></canvas></div></div>
+    <div class="card"><h3>&#9889; 30-Day SAIDI Trend &amp; Outages Prevented</h3><div class="chart-wrap"><canvas id="chartA2"></canvas></div></div>
+  </div>
+  <div class="card"><h3>&#128202; Outages Prevented &mdash; Last 15 Days</h3><div class="chart-wrap-sm"><canvas id="chartA3"></canvas></div></div>
+</div>
+
+<!-- PANEL B -->
+<div id="panel-B" class="panel">
+  <div class="kpi-row kpi-4">
+    <div class="kpi red"><label>P0 Emergency WOs</label><div class="val">158</div><div class="sub">Immediate response required</div><span class="badge badge-alert">&#9888; Critical</span></div>
+    <div class="kpi orange"><label>P1 Urgent WOs</label><div class="val">351</div><div class="sub">Response within 24h</div><span class="badge badge-warn">&#9889; Urgent</span></div>
+    <div class="kpi blue"><label>Total Active WOs</label><div class="val">1,000</div><div class="sub">AI-ranked queue (not FIFO)</div><span class="badge badge-info">ML-Ranked</span></div>
+    <div class="kpi green"><label>Avg Health (Top 10)</label><div class="val">58.0</div><div class="sub">Asset health score avg</div><span class="xref" style="margin-top:4px;display:inline-block">&#8599; F01 Panel A</span></div>
+  </div>
+  <div class="grid-3">
+    <div class="card"><h3>&#127919; SLA Priority Distribution</h3><div class="chart-wrap"><canvas id="chartB1"></canvas></div></div>
+    <div class="card"><h3>&#128295; WO Type Breakdown</h3><div class="chart-wrap"><canvas id="chartB2"></canvas></div></div>
+    <div class="card"><h3>&#128203; WO Status Distribution</h3><div class="chart-wrap"><canvas id="chartB3"></canvas></div></div>
+  </div>
+  <div class="card">
+    <h3>&#129504; Top 10 AI-Ranked Work Orders &mdash; Highest Risk First</h3>
+    <div class="tbl-wrap"><table>
+      <tr><th>WO ID</th><th>Asset ID / Type</th><th>Zone</th><th>WO Type</th><th>SLA Priority</th><th>Crew Assigned</th><th>Countdown</th><th>Health</th><th>Risk/25</th><th>P(Fail 12m)</th><th>Status</th></tr>
+      <tr>
+      <td><strong>WO-FS-0684</strong></td>
+      <td><small>AST-OHL-0227</small><br><small style="color:var(--muted)">Overhead Line</small></td>
+      <td>Repair</td>
+      <td>Al Karama</td>
+      <td><span class="p2">P2-Planned</span></td>
+      <td>Yusuf Al Dhaheri</td>
+      <td>48h</td>
+      <td><strong>70.9</strong></td>
+      <td><strong>20.0</strong>/25</td>
+      <td>54.5%</td>
+      <td>Pending</td>
+    </tr>
+<tr>
+      <td><strong>WO-FS-0948</strong></td>
+      <td><small>AST-PT-0346</small><br><small style="color:var(--muted)">Power Transformer</small></td>
+      <td>Inspection</td>
+      <td>Al Ain City</td>
+      <td><span class="p1">P1-Urgent</span></td>
+      <td>Faisal Al Qubaisi</td>
+      <td>6h</td>
+      <td><strong>64.7</strong></td>
+      <td><strong>20.0</strong>/25</td>
+      <td>51.2%</td>
+      <td>Pending</td>
+    </tr>
+<tr>
+      <td><strong>WO-FS-0709</strong></td>
+      <td><small>AST-PT-0346</small><br><small style="color:var(--muted)">Power Transformer</small></td>
+      <td>Drone Survey</td>
+      <td>Al Ain City</td>
+      <td><span class="p1">P1-Urgent</span></td>
+      <td>Ahmed Al Mansouri</td>
+      <td>23h</td>
+      <td><strong>64.7</strong></td>
+      <td><strong>18.0</strong>/25</td>
+      <td>48.4%</td>
+      <td>En Route</td>
+    </tr>
+<tr>
+      <td><strong>WO-FS-0753</strong></td>
+      <td><small>AST-CAP-0910</small><br><small style="color:var(--muted)">Capacitor Bank</small></td>
+      <td>Inspection</td>
+      <td>Deira</td>
+      <td><span class="p1">P1-Urgent</span></td>
+      <td>Abdulla Al Harthi</td>
+      <td>17h</td>
+      <td><strong>63.0</strong></td>
+      <td><strong>16.0</strong>/25</td>
+      <td>36.3%</td>
+      <td>Pending</td>
+    </tr>
+<tr>
+      <td><strong>WO-FS-0111</strong></td>
+      <td><small>AST-PMT-0355</small><br><small style="color:var(--muted)">Pole-Mounted Transformer</small></td>
+      <td>Emergency</td>
+      <td>Jumeirah</td>
+      <td><span class="p1">P1-Urgent</span></td>
+      <td>Sultan Al Falasi</td>
+      <td>15h</td>
+      <td><strong>50.2</strong></td>
+      <td><strong>20.0</strong>/25</td>
+      <td>14.5%</td>
+      <td>Assigned</td>
+    </tr>
+<tr>
+      <td><strong>WO-FS-0201</strong></td>
+      <td><small>AST-DT-0966</small><br><small style="color:var(--muted)">Distribution Transformer</small></td>
+      <td>Repair</td>
+      <td>Business Bay</td>
+      <td><span class="p1">P1-Urgent</span></td>
+      <td>Saeed Al Ketbi</td>
+      <td>23h</td>
+      <td><strong>63.3</strong></td>
+      <td><strong>13.0</strong>/25</td>
+      <td>10.5%</td>
+      <td>En Route</td>
+    </tr>
+<tr>
+      <td><strong>WO-FS-0728</strong></td>
+      <td><small>AST-UGC-0350</small><br><small style="color:var(--muted)">Underground Cable</small></td>
+      <td>Inspection</td>
+      <td>Mushrif</td>
+      <td><span class="p1">P1-Urgent</span></td>
+      <td>Mohammed Al Rashid</td>
+      <td>22h</td>
+      <td><strong>59.8</strong></td>
+      <td><strong>10.0</strong>/25</td>
+      <td>11.9%</td>
+      <td>In Progress</td>
+    </tr>
+<tr>
+      <td><strong>WO-FS-0597</strong></td>
+      <td><small>AST-OHL-0987</small><br><small style="color:var(--muted)">Overhead Line</small></td>
+      <td>Drone Survey</td>
+      <td>Mirdif</td>
+      <td><span class="p0">P0-Emergency</span></td>
+      <td>Zayed Al Ameri</td>
+      <td><span style="color:var(--red);font-weight:700">1h</span></td>
+      <td><strong>25.4</strong></td>
+      <td><strong>19.0</strong>/25</td>
+      <td>41.6%</td>
+      <td>In Progress</td>
+    </tr>
+<tr>
+      <td><strong>WO-FS-0732</strong></td>
+      <td><small>AST-SW-0498</small><br><small style="color:var(--muted)">Switchgear Panel</small></td>
+      <td>Repair</td>
+      <td>Al Qusais</td>
+      <td><span class="p0">P0-Emergency</span></td>
+      <td>Yusuf Al Dhaheri</td>
+      <td>4h</td>
+      <td><strong>40.3</strong></td>
+      <td><strong>20.0</strong>/25</td>
+      <td>7.8%</td>
+      <td>Pending</td>
+    </tr>
+<tr>
+      <td><strong>WO-FS-0501</strong></td>
+      <td><small>AST-CB-0210</small><br><small style="color:var(--muted)">Circuit Breaker</small></td>
+      <td>Inspection</td>
+      <td>Al Twar</td>
+      <td><span class="p2">P2-Planned</span></td>
+      <td>Faisal Al Qubaisi</td>
+      <td>26h</td>
+      <td><strong>77.6</strong></td>
+      <td><strong>15.0</strong>/25</td>
+      <td>5.3%</td>
+      <td>Pending</td>
+    </tr>
+
+    </table></div>
+    <div style="margin-top:8px;font-size:10px;color:var(--muted)">
+      <span class="xref">&#8599; Cross-ref: F01 Panel C Risk Matrix &middot; Panel A Health Score &middot; Panel E RUL</span>
+      &nbsp; AI Rank = Risk_Score &times; (1 + (100&minus;Health)/100) &times; (12/max(RUL,1))
+    </div>
+  </div>
+</div>
+
+<!-- PANEL C -->
+<div id="panel-C" class="panel">
+  <div class="kpi-row kpi-4">
+    <div class="kpi green"><label>SLA Met Rate</label><div class="val">95.2%</div><div class="sub">140 of 147 completed WOs</div><span class="badge badge-ok">Target &ge;93%</span></div>
+    <div class="kpi blue"><label>First-Time Fix Rate</label><div class="val">88.4%</div><div class="sub">Resolved in one visit</div><span class="badge badge-ok">Target &ge;85%</span></div>
+    <div class="kpi orange"><label>Avg WO Cost (AED)</label><div class="val">9,526</div><div class="sub">Parts + Labour combined</div></div>
+    <div class="kpi red"><label>Total SAIDI Contribution</label><div class="val">7,528</div><div class="sub">mins across all WOs</div><span class="badge badge-info">IEEE 1366</span></div>
+  </div>
+  <div class="grid-2">
+    <div class="card"><h3>&#128202; Work Order Count by Type</h3><div class="chart-wrap"><canvas id="chartC1"></canvas></div></div>
+    <div class="card"><h3>&#128176; Total Cost by WO Type (AED)</h3><div class="chart-wrap"><canvas id="chartC2"></canvas></div></div>
+  </div>
+  <div class="grid-2">
+    <div class="card"><h3>&#10003; Completed vs Total by Type</h3><div class="chart-wrap"><canvas id="chartC3"></canvas></div></div>
+    <div class="card"><h3>&#128203; SLA Met &amp; FTF Summary</h3><div class="chart-wrap"><canvas id="chartC4"></canvas></div></div>
+  </div>
+</div>
+
+<!-- PANEL D -->
+<div id="panel-D" class="panel">
+  <div class="kpi-row kpi-3">
+    <div class="kpi red"><label>Active Field Incidents</label><div class="val">509</div><div class="sub">Assets flagged in field</div><span class="badge badge-alert">&#9889; Live Feed</span></div>
+    <div class="kpi orange"><label>High/Critical Risk Zone Assets</label><div class="val">509</div><div class="sub">Elevated risk areas</div></div>
+    <div class="kpi blue"><label>Top Hotspot Zone</label><div class="val" style="font-size:18px">Al Twar</div><div class="sub">32 critical/high events</div></div>
+  </div>
+  <div class="grid-31">
+    <div class="card" style="padding:12px">
+      <h3>&#128506; Live Field Operations Map &mdash; Top 30 Active Incidents</h3>
+      <div id="field-map"></div>
+      <div style="margin-top:8px;font-size:10px;color:var(--muted);display:flex;gap:16px">
+        <span>&#128308; Critical</span><span>&#128992; High</span><span>&#128309; Moderate</span><span>&#128994; Low</span>
+        <span class="xref">Cross-ref: F01 Panel B (GIS coordinates)</span>
+      </div>
+    </div>
+    <div>
+      <div class="card"><h3>&#9888; Risk Zone Distribution</h3><div class="chart-wrap-sm"><canvas id="chartD1"></canvas></div></div>
+      <div class="card"><h3>&#128203; Job Status</h3><div class="chart-wrap-sm"><canvas id="chartD2"></canvas></div></div>
+    </div>
+  </div>
+  <div class="card"><h3>&#128293; Top 5 Hotspot Zones</h3><div class="chart-wrap-sm"><canvas id="chartD3"></canvas></div></div>
+</div>
+
+<!-- PANEL E -->
+<div id="panel-E" class="panel">
+  <div class="kpi-row kpi-4">
+    <div class="kpi orange"><label>Avg ETA to Site (mins)</label><div class="val">161</div><div class="sub">Incl. Al Dhafra long-haul</div><span class="badge badge-warn">&#9888; Long Routes</span></div>
+    <div class="kpi blue"><label>Avg Route Distance (km)</label><div class="val">65.2</div><div class="sub">Depot to job site</div></div>
+    <div class="kpi green"><label>Optimal Route Rate</label><div class="val">39.5%</div><div class="sub">AI-optimized routes selected</div></div>
+    <div class="kpi"><label>Active Crew Teams</label><div class="val">12</div><div class="sub">Specialist teams deployed</div></div>
+  </div>
+  <div class="grid-2">
+    <div class="card"><h3>&#128101; Crew Availability Status</h3><div class="chart-wrap"><canvas id="chartE1"></canvas></div></div>
+    <div class="card"><h3>&#128678; Traffic Conditions Impact</h3><div class="chart-wrap"><canvas id="chartE2"></canvas></div></div>
+  </div>
+  <div class="card"><h3>&#128202; Crew Workload &mdash; Jobs Assigned vs Deployed</h3><div class="chart-wrap-lg"><canvas id="chartE3"></canvas></div></div>
+</div>
+
+<!-- PANEL F -->
+<div id="panel-F" class="panel">
+  <div class="kpi-row kpi-4">
+    <div class="kpi red"><label>Immediate Action Required</label><div class="val">512</div><div class="sub">Critical + High status assets</div><span class="badge badge-alert">&#9888; Deploy Now</span></div>
+    <div class="kpi orange"><label>Inspections Overdue</label><div class="val">628</div><div class="sub">Past scheduled inspection date</div><span class="badge badge-warn">Past SLA</span></div>
+    <div class="kpi blue"><label>Avg P(Failure 12m)</label><div class="val">38.5%</div><div class="sub">Fleet-wide failure probability</div><span class="xref" style="margin-top:4px;display:inline-block">&#8599; F01 Panel E</span></div>
+    <div class="kpi gold"><label>Annual Risk Exposure</label><div class="val">AED 11.9M</div><div class="sub">Fleet-wide estimate</div></div>
+  </div>
+  <div class="grid-2">
+    <div class="card"><h3>&#127973; Asset Health Status Distribution <span class="xref">&#8599; F01 Panel A</span></h3><div class="chart-wrap"><canvas id="chartF1"></canvas></div></div>
+    <div class="card"><h3>&#9889; Urgent Action by Asset Type</h3><div class="chart-wrap"><canvas id="chartF2"></canvas></div></div>
+  </div>
+  <div class="card">
+    <h3>&#128308; Top 10 Highest-Risk Assets &mdash; Field Priority Queue</h3>
+    <div class="tbl-wrap"><table>
+      <tr><th>Asset ID</th><th>Type</th><th>Zone</th><th>Health Score</th><th>RUL (months)</th><th>P(Fail 12m)</th><th>Overdue?</th><th>Recommended Action</th><th>SLA Urgency</th></tr>
+      <tr>
+      <td><strong>AST-CAP-0629</strong></td>
+      <td>Capacitor Bank</td>
+      <td>Al Qusis Ind.</td>
+      <td><strong style="color:var(--orange)">48.4</strong></td>
+      <td><strong style="color:var(--red)">11</strong></td>
+      <td>29.0%</td>
+      <td><span style="color:var(--red);font-weight:700">&#9888; YES</span></td>
+      <td>Immediate Emergency Dispatch</td>
+      <td><span class="p0">P0-Emergency</span></td>
+    </tr>
+<tr>
+      <td><strong>AST-PMT-0661</strong></td>
+      <td>Pole-Mounted Transformer</td>
+      <td>Al Rashidiya</td>
+      <td><strong style="color:var(--orange)">48.6</strong></td>
+      <td><strong style="">36</strong></td>
+      <td>29.2%</td>
+      <td>&#10003; No</td>
+      <td>Immediate Emergency Dispatch</td>
+      <td><span class="p0">P0-Emergency</span></td>
+    </tr>
+<tr>
+      <td><strong>AST-DT-0815</strong></td>
+      <td>Distribution Transformer</td>
+      <td>Al Khawaneej</td>
+      <td><strong style="color:var(--orange)">45.2</strong></td>
+      <td><strong style="">46</strong></td>
+      <td>27.1%</td>
+      <td><span style="color:var(--red);font-weight:700">&#9888; YES</span></td>
+      <td>Immediate Emergency Dispatch</td>
+      <td><span class="p0">P0-Emergency</span></td>
+    </tr>
+<tr>
+      <td><strong>AST-LVC-0302</strong></td>
+      <td>LV Cable</td>
+      <td>Al Murabba</td>
+      <td><strong style="color:var(--red)">32.8</strong></td>
+      <td><strong style="">53</strong></td>
+      <td>19.7%</td>
+      <td>&#10003; No</td>
+      <td>Immediate Emergency Dispatch</td>
+      <td><span class="p0">P0-Emergency</span></td>
+    </tr>
+<tr>
+      <td><strong>AST-MVC-0730</strong></td>
+      <td>MV Cable</td>
+      <td>Business Bay</td>
+      <td><strong style="color:var(--orange)">48.1</strong></td>
+      <td><strong style="">53</strong></td>
+      <td>28.9%</td>
+      <td><span style="color:var(--red);font-weight:700">&#9888; YES</span></td>
+      <td>Immediate Emergency Dispatch</td>
+      <td><span class="p0">P0-Emergency</span></td>
+    </tr>
+<tr>
+      <td><strong>AST-CAP-0442</strong></td>
+      <td>Capacitor Bank</td>
+      <td>Al Twar</td>
+      <td><strong style="color:var(--orange)">46.9</strong></td>
+      <td><strong style="">60</strong></td>
+      <td>28.1%</td>
+      <td><span style="color:var(--red);font-weight:700">&#9888; YES</span></td>
+      <td>Immediate Emergency Dispatch</td>
+      <td><span class="p0">P0-Emergency</span></td>
+    </tr>
+<tr>
+      <td><strong>AST-MVC-0617</strong></td>
+      <td>MV Cable</td>
+      <td>Al Warqa</td>
+      <td><strong style="color:var(--orange)">48.3</strong></td>
+      <td><strong style="">60</strong></td>
+      <td>29.0%</td>
+      <td>&#10003; No</td>
+      <td>Immediate Emergency Dispatch</td>
+      <td><span class="p0">P0-Emergency</span></td>
+    </tr>
+<tr>
+      <td><strong>AST-PMT-0407</strong></td>
+      <td>Pole-Mounted Transformer</td>
+      <td>Al Qusis Ind.</td>
+      <td><strong style="color:var(--orange)">49.9</strong></td>
+      <td><strong style="">64</strong></td>
+      <td>29.9%</td>
+      <td>&#10003; No</td>
+      <td>Immediate Emergency Dispatch</td>
+      <td><span class="p0">P0-Emergency</span></td>
+    </tr>
+<tr>
+      <td><strong>AST-CAP-0648</strong></td>
+      <td>Capacitor Bank</td>
+      <td>Al Nahda</td>
+      <td><strong style="color:var(--red)">38.6</strong></td>
+      <td><strong style="">65</strong></td>
+      <td>23.2%</td>
+      <td><span style="color:var(--red);font-weight:700">&#9888; YES</span></td>
+      <td>Immediate Emergency Dispatch</td>
+      <td><span class="p0">P0-Emergency</span></td>
+    </tr>
+<tr>
+      <td><strong>AST-SW-0673</strong></td>
+      <td>Switchgear Panel</td>
+      <td>Al Karama</td>
+      <td><strong style="color:var(--orange)">49.1</strong></td>
+      <td><strong style="">68</strong></td>
+      <td>29.5%</td>
+      <td><span style="color:var(--red);font-weight:700">&#9888; YES</span></td>
+      <td>Immediate Emergency Dispatch</td>
+      <td><span class="p0">P0-Emergency</span></td>
+    </tr>
+
+    </table></div>
+    <div style="margin-top:8px;font-size:10px;color:var(--muted)">
+      <span class="xref">&#8599; Cross-ref: F01 Panel A (Health Score, RUL) &middot; Panel C (Risk Score) &middot; Panel D (Maint Queue)</span>
+    </div>
+  </div>
+</div>
+
+<!-- PANEL G -->
+<div id="panel-G" class="panel">
+  <div class="kpi-row kpi-4">
+    <div class="kpi orange"><label>LOTO Required Jobs</label><div class="val">250</div><div class="sub">Lockout/Tagout procedures</div><span class="badge badge-warn">&#9889; HV Safety</span></div>
+    <div class="kpi red"><label>High-Risk Job Cards (&ge;12)</label><div class="val">547</div><div class="sub">Risk Assessment Score &ge;12</div><span class="badge badge-alert">Supervisor Required</span></div>
+    <div class="kpi blue"><label>Avg Job Duration (hrs)</label><div class="val">3.0</div><div class="sub">Estimated field time</div></div>
+    <div class="kpi green"><label>SOPs Loaded</label><div class="val">12</div><div class="sub">Unique procedure references</div><span class="badge badge-ok"></span></div>
+  </div>
+  <div class="grid-2">
+    <div class="card"><h3>&#128203; Work Permit Type Distribution</h3><div class="chart-wrap"><canvas id="chartG1"></canvas></div></div>
+    <div class="card"><h3>&#9201; Avg Duration by Job Type (hrs)</h3><div class="chart-wrap"><canvas id="chartG2"></canvas></div></div>
+  </div>
+  <div class="card">
+    <h3>&#127183; Top 5 Highest-Risk Job Cards</h3>
+    <div class="flight-card">
+      <div class="flight-icon">&#128308;</div>
+      <div class="flight-info">
+        <strong>JC-FS-0032 &mdash; AST-CB-0206 (Circuit Breaker)</strong>
+        <p>Zone: Al Barsha &nbsp;|&nbsp; Permit: High Voltage Access Permit &nbsp;|&nbsp; LOTO: Required</p>
+        <p>SOP: SOP-CB-001 &nbsp;|&nbsp; Est. 2.1h &nbsp;|&nbsp; Health: <strong style="color:var(--red)">Critical</strong></p>
+      </div>
+      <span class="p0">Risk 18/18</span>
+    </div>
+<div class="flight-card">
+      <div class="flight-icon">&#128308;</div>
+      <div class="flight-info">
+        <strong>JC-FS-0038 &mdash; AST-PT-0166 (Power Transformer)</strong>
+        <p>Zone: Al Quoz &nbsp;|&nbsp; Permit: Live Working Permit &nbsp;|&nbsp; LOTO: Required</p>
+        <p>SOP: SOP-PT-001 &nbsp;|&nbsp; Est. 1.8h &nbsp;|&nbsp; Health: <strong style="color:var(--red)">High</strong></p>
+      </div>
+      <span class="p0">Risk 18/18</span>
+    </div>
+<div class="flight-card">
+      <div class="flight-icon">&#128308;</div>
+      <div class="flight-info">
+        <strong>JC-FS-0076 &mdash; AST-SW-0403 (Switchgear Panel)</strong>
+        <p>Zone: Al Warqa &nbsp;|&nbsp; Permit: General Works Permit &nbsp;|&nbsp; LOTO: Required</p>
+        <p>SOP: SOP-SWG-001 &nbsp;|&nbsp; Est. 0.5h &nbsp;|&nbsp; Health: <strong style="color:var(--red)">High</strong></p>
+      </div>
+      <span class="p0">Risk 18/18</span>
+    </div>
+<div class="flight-card">
+      <div class="flight-icon">&#128308;</div>
+      <div class="flight-info">
+        <strong>JC-FS-0089 &mdash; AST-SW-0495 (Switchgear Panel)</strong>
+        <p>Zone: Al Warqa &nbsp;|&nbsp; Permit: General Works Permit &nbsp;|&nbsp; LOTO: Required</p>
+        <p>SOP: SOP-SWG-001 &nbsp;|&nbsp; Est. 3.6h &nbsp;|&nbsp; Health: <strong style="color:var(--red)">Critical</strong></p>
+      </div>
+      <span class="p0">Risk 18/18</span>
+    </div>
+<div class="flight-card">
+      <div class="flight-icon">&#128308;</div>
+      <div class="flight-info">
+        <strong>JC-FS-0091 &mdash; AST-UGC-0219 (Underground Cable)</strong>
+        <p>Zone: Downtown &nbsp;|&nbsp; Permit: General Works Permit &nbsp;|&nbsp; LOTO: Not Required</p>
+        <p>SOP: SOP-UC-001 &nbsp;|&nbsp; Est. 0.4h &nbsp;|&nbsp; Health: <strong style="color:var(--red)">High</strong></p>
+      </div>
+      <span class="p0">Risk 18/18</span>
+    </div>
+
+  </div>
+</div>
+
+<!-- PANEL H -->
+<div id="panel-H" class="panel">
+  <div class="kpi-row kpi-5">
+    <div class="kpi red"><label>Incident SLA Met Rate</label><div class="val">76.8%</div><div class="sub">768 of </div><span class="badge badge-alert">&#9888; Below 93%</span></div>
+    <div class="kpi green"><label>Outages Prevented</label><div class="val">534</div><div class="sub">AI-dispatched interventions</div><span class="badge badge-ok">&#8593; Proactive</span></div>
+    <div class="kpi orange"><label>Near-Miss Events</label><div class="val">52</div><div class="sub">Target &lt;60/period</div></div>
+    <div class="kpi blue"><label>Avg SAIDI / Incident</label><div class="val">6.107</div><div class="sub">Minutes per customer</div></div>
+    <div class="kpi green"><label>Customers Protected</label><div class="val">1081K</div><div class="sub">From prevented outages</div></div>
+  </div>
+  <div class="grid-2">
+    <div class="card"><h3>&#128200; 12-Month SAIDI Trend</h3><div class="chart-wrap"><canvas id="chartH1"></canvas></div></div>
+    <div class="card"><h3>&#9201; SLA Breach Rate by Asset Health Status</h3><div class="chart-wrap"><canvas id="chartH2"></canvas></div></div>
+  </div>
+  <div class="grid-2">
+    <div class="card"><h3>&#128203; Incident Category Breakdown</h3><div class="chart-wrap"><canvas id="chartH3"></canvas></div></div>
+    <div class="card"><h3>&#10003; SLA Performance Overview</h3><div class="chart-wrap"><canvas id="chartH4"></canvas></div></div>
+  </div>
+</div>
+
+<!-- PANEL I -->
+<div id="panel-I" class="panel">
+  <div class="kpi-row kpi-4">
+    <div class="kpi green"><label>Flights Completed</label><div class="val">725</div><div class="sub">of 1,000 planned</div><span class="badge badge-ok">&#10003; 72.5% Rate</span></div>
+    <div class="kpi red"><label>Total Defects Found</label><div class="val">2,900</div><div class="sub">AI image analysis</div><span class="badge badge-alert">&#9888; Action Required</span></div>
+    <div class="kpi orange"><label>Coverage Gaps</label><div class="val">145</div><div class="sub">Zones insufficiently covered</div></div>
+    <div class="kpi blue"><label>Avg Assets / Flight</label><div class="val">23.9</div><div class="sub">Inspections per sortie</div></div>
+  </div>
+  <div class="grid-3">
+    <div class="card"><h3>&#9992; Flight Status</h3><div class="chart-wrap"><canvas id="chartI1"></canvas></div></div>
+    <div class="card"><h3>&#9888; Defect Severity Distribution</h3><div class="chart-wrap"><canvas id="chartI2"></canvas></div></div>
+    <div class="card"><h3>&#128641; Drone Fleet Utilization</h3><div class="chart-wrap"><canvas id="chartI3"></canvas></div></div>
+  </div>
+  <div class="grid-2">
+    <div class="card"><h3>&#128506; Flights by Zone (Top 8)</h3><div class="chart-wrap"><canvas id="chartI4"></canvas></div></div>
+    <div class="card"><h3>&#128197; Recent &amp; Upcoming Flights</h3>
+      <div class="flight-card">
+      <div class="flight-icon">&#9989;</div>
+      <div class="flight-info">
+        <strong>FLT-FS-0636 &mdash; Al Murabba</strong>
+        <p>Drone: Matrice &nbsp;|&nbsp; Scheduled: 31/03/2026 &nbsp;|&nbsp; Status: <strong>Completed</strong></p>
+        <p>Defects: 6 &nbsp;|&nbsp; Max Severity: Severe &nbsp;|&nbsp; Gap: No</p>
+      </div>
+      <span class="badge-alert badge">Completed</span>
+    </div>
+<div class="flight-card">
+      <div class="flight-icon">&#9989;</div>
+      <div class="flight-info">
+        <strong>FLT-FS-0022 &mdash; Downtown</strong>
+        <p>Drone: Matrice &nbsp;|&nbsp; Scheduled: 31/05/2026 &nbsp;|&nbsp; Status: <strong>Completed</strong></p>
+        <p>Defects: 2 &nbsp;|&nbsp; Max Severity: Minor &nbsp;|&nbsp; Gap: No</p>
+      </div>
+      <span class="badge-ok badge">Completed</span>
+    </div>
+<div class="flight-card">
+      <div class="flight-icon">&#9989;</div>
+      <div class="flight-info">
+        <strong>FLT-FS-0564 &mdash; Mirdif</strong>
+        <p>Drone: M30T &nbsp;|&nbsp; Scheduled: 31/05/2026 &nbsp;|&nbsp; Status: <strong>Completed</strong></p>
+        <p>Defects: 1 &nbsp;|&nbsp; Max Severity: Minor &nbsp;|&nbsp; Gap: No</p>
+      </div>
+      <span class="badge-ok badge">Completed</span>
+    </div>
+<div class="flight-card">
+      <div class="flight-icon">&#9989;</div>
+      <div class="flight-info">
+        <strong>FLT-FS-0647 &mdash; Al Mankhool</strong>
+        <p>Drone: Alta &nbsp;|&nbsp; Scheduled: 31/05/2026 &nbsp;|&nbsp; Status: <strong>Completed</strong></p>
+        <p>Defects: 3 &nbsp;|&nbsp; Max Severity: Critical &nbsp;|&nbsp; Gap: No</p>
+      </div>
+      <span class="badge-alert badge">Completed</span>
+    </div>
+<div class="flight-card">
+      <div class="flight-icon">&#9989;</div>
+      <div class="flight-info">
+        <strong>FLT-FS-0821 &mdash; Oud Metha</strong>
+        <p>Drone: Alta &nbsp;|&nbsp; Scheduled: 31/05/2026 &nbsp;|&nbsp; Status: <strong>Completed</strong></p>
+        <p>Defects: 7 &nbsp;|&nbsp; Max Severity: Moderate &nbsp;|&nbsp; Gap: No</p>
+      </div>
+      <span class="badge-warn badge">Completed</span>
+    </div>
+<div class="flight-card">
+      <div class="flight-icon">&#9989;</div>
+      <div class="flight-info">
+        <strong>FLT-FS-0911 &mdash; Jumeirah</strong>
+        <p>Drone: Alta &nbsp;|&nbsp; Scheduled: 31/05/2026 &nbsp;|&nbsp; Status: <strong>Completed</strong></p>
+        <p>Defects: 3 &nbsp;|&nbsp; Max Severity: Minor &nbsp;|&nbsp; Gap: No</p>
+      </div>
+      <span class="badge-ok badge">Completed</span>
+    </div>
+<div class="flight-card">
+      <div class="flight-icon">&#9989;</div>
+      <div class="flight-info">
+        <strong>FLT-FS-0606 &mdash; Mirdif</strong>
+        <p>Drone: EVO &nbsp;|&nbsp; Scheduled: 31/12/2025 &nbsp;|&nbsp; Status: <strong>Completed</strong></p>
+        <p>Defects: 0 &nbsp;|&nbsp; Max Severity: None &nbsp;|&nbsp; Gap: No</p>
+      </div>
+      <span class="badge-ok badge">Completed</span>
+    </div>
+<div class="flight-card">
+      <div class="flight-icon">&#9989;</div>
+      <div class="flight-info">
+        <strong>FLT-FS-0771 &mdash; Al Barsha</strong>
+        <p>Drone: Matrice &nbsp;|&nbsp; Scheduled: 31/12/2025 &nbsp;|&nbsp; Status: <strong>Completed</strong></p>
+        <p>Defects: 8 &nbsp;|&nbsp; Max Severity: Minor &nbsp;|&nbsp; Gap: No</p>
+      </div>
+      <span class="badge-ok badge">Completed</span>
+    </div>
+
+    </div>
+  </div>
+</div>
+
+</div><!-- /content -->
+<footer>
+  <strong>Lumina AI</strong> &mdash; Field Safety Command Centre &middot; F03 Field Safety &amp; Work Order Management &middot;
+  Data:  &times;  &middot; Cross-linked to Asset Health Pillar (F01) &middot;
+  WebSocket streaming enabled &middot; 
+</footer>
+
+<script>
+const D = {"panel_a": {"avg_util": 81.1, "avg_sla": 95.1, "avg_saidi": 3.25, "avg_saifi": 0.1019, "tot_outages_prevented": 4026, "tot_emergencies": 2632, "avg_response_mins": 29.3, "tot_near_miss": 1036, "today": {"crew_util": 72.6, "sla_pct": 94.2, "saidi": 6.97, "saifi": 0.072, "outages_prev": 3, "active_wos": 24, "drone_flights": 5, "near_miss": 0}, "trend_dates": ["23/05/2026", "24/05/2026", "25/05/2026", "26/05/2026", "27/05/2026", "28/05/2026", "29/05/2026", "30/05/2026", "31/05/2026", "01/06/2026", "02/06/2026", "03/06/2026", "04/06/2026", "05/06/2026", "06/06/2026", "07/06/2026", "08/06/2026", "09/06/2026", "10/06/2026", "11/06/2026", "12/06/2026", "13/06/2026", "14/06/2026", "15/06/2026", "16/06/2026", "17/06/2026", "18/06/2026", "19/06/2026", "20/06/2026", "21/06/2026"], "trend_util": [68.6, 75.8, 84.6, 92.7, 85.5, 92.1, 69.5, 67.7, 73.1, 88.1, 84.4, 89.9, 88.6, 68.5, 75.7, 75.7, 90.9, 86.6, 83.6, 88.5, 71.6, 70.0, 71.1, 88.6, 83.9, 87.7, 87.7, 70.5, 76.7, 72.6], "trend_sla": [97.7, 98.8, 98.2, 95.5, 96.4, 95.7, 96.6, 97.5, 98.9, 96.9, 94.5, 95.0, 97.3, 94.8, 96.1, 95.9, 96.9, 93.2, 96.4, 93.5, 96.2, 93.1, 94.6, 94.9, 98.2, 97.1, 96.6, 97.5, 97.6, 94.2], "trend_saidi": [3.08, 2.4, 2.14, 2.47, 4.32, 2.89, 1.88, 2.01, 2.97, 3.85, 3.88, 6.73, 1.39, 6.63, 3.86, 7.96, 3.23, 7.76, 7.57, 1.49, 5.48, 5.5, 8.44, 3.02, 6.75, 3.43, 3.58, 2.26, 3.78, 6.97], "trend_out": [0, 6, 8, 2, 7, 9, 0, 1, 5, 1, 3, 4, 5, 1, 2, 6, 3, 9, 9, 3, 1, 4, 3, 9, 2, 9, 3, 2, 3, 3]}, "panel_b": {"priority_labels": ["P2-Planned", "P1-Urgent", "P0-Emergency", "P3-Routine"], "priority_counts": [370, 351, 158, 121], "type_labels": ["Repair", "Inspection", "Drone Survey", "Emergency", "Replacement"], "type_counts": [318, 355, 120, 130, 77], "status_labels": ["Pending", "En Route", "Assigned", "In Progress"], "status_counts": [328, 190, 274, 208], "top10": [{"wo_id": "WO-FS-0684", "asset_id": "AST-OHL-0227", "asset_type": "Overhead Line", "zone": "Al Karama", "wo_type": "Repair", "sla_priority": "P2-Planned", "status": "Pending", "crew": "Yusuf Al Dhaheri", "countdown": 48, "health": 70.9, "risk": 20.0, "pf12": 54.5, "rationale": "Health=71.0; RUL=5m; Risk=20; P(fail12m)=54.5%"}, {"wo_id": "WO-FS-0948", "asset_id": "AST-PT-0346", "asset_type": "Power Transformer", "zone": "Al Ain City", "wo_type": "Inspection", "sla_priority": "P1-Urgent", "status": "Pending", "crew": "Faisal Al Qubaisi", "countdown": 6, "health": 64.7, "risk": 20.0, "pf12": 51.2, "rationale": "Health=65.0; RUL=7m; Risk=20; P(fail12m)=51.2%"}, {"wo_id": "WO-FS-0709", "asset_id": "AST-PT-0346", "asset_type": "Power Transformer", "zone": "Al Ain City", "wo_type": "Drone Survey", "sla_priority": "P1-Urgent", "status": "En Route", "crew": "Ahmed Al Mansouri", "countdown": 23, "health": 64.7, "risk": 18.0, "pf12": 48.4, "rationale": "Health=65.0; RUL=7m; Risk=18; P(fail12m)=48.4%"}, {"wo_id": "WO-FS-0753", "asset_id": "AST-CAP-0910", "asset_type": "Capacitor Bank", "zone": "Deira", "wo_type": "Inspection", "sla_priority": "P1-Urgent", "status": "Pending", "crew": "Abdulla Al Harthi", "countdown": 17, "health": 63.0, "risk": 16.0, "pf12": 36.3, "rationale": "Health=63.0; RUL=7m; Risk=16; P(fail12m)=36.3%"}, {"wo_id": "WO-FS-0111", "asset_id": "AST-PMT-0355", "asset_type": "Pole-Mounted Transformer", "zone": "Jumeirah", "wo_type": "Emergency", "sla_priority": "P1-Urgent", "status": "Assigned", "crew": "Sultan Al Falasi", "countdown": 15, "health": 50.2, "risk": 20.0, "pf12": 14.5, "rationale": "Health=50.0; RUL=10m; Risk=20; P(fail12m)=14.5%"}, {"wo_id": "WO-FS-0201", "asset_id": "AST-DT-0966", "asset_type": "Distribution Transformer", "zone": "Business Bay", "wo_type": "Repair", "sla_priority": "P1-Urgent", "status": "En Route", "crew": "Saeed Al Ketbi", "countdown": 23, "health": 63.3, "risk": 13.0, "pf12": 10.5, "rationale": "Health=63.0; RUL=6m; Risk=13; P(fail12m)=10.5%"}, {"wo_id": "WO-FS-0728", "asset_id": "AST-UGC-0350", "asset_type": "Underground Cable", "zone": "Mushrif", "wo_type": "Inspection", "sla_priority": "P1-Urgent", "status": "In Progress", "crew": "Mohammed Al Rashid", "countdown": 22, "health": 59.8, "risk": 10.0, "pf12": 11.9, "rationale": "Health=60.0; RUL=5m; Risk=10; P(fail12m)=11.9%"}, {"wo_id": "WO-FS-0597", "asset_id": "AST-OHL-0987", "asset_type": "Overhead Line", "zone": "Mirdif", "wo_type": "Drone Survey", "sla_priority": "P0-Emergency", "status": "In Progress", "crew": "Zayed Al Ameri", "countdown": 1, "health": 25.4, "risk": 19.0, "pf12": 41.6, "rationale": "Health=25.0; RUL=69m; Risk=19; P(fail12m)=41.6%"}, {"wo_id": "WO-FS-0732", "asset_id": "AST-SW-0498", "asset_type": "Switchgear Panel", "zone": "Al Qusais", "wo_type": "Repair", "sla_priority": "P0-Emergency", "status": "Pending", "crew": "Yusuf Al Dhaheri", "countdown": 4, "health": 40.3, "risk": 20.0, "pf12": 7.8, "rationale": "Health=40.0; RUL=99m; Risk=20; P(fail12m)=7.8%"}, {"wo_id": "WO-FS-0501", "asset_id": "AST-CB-0210", "asset_type": "Circuit Breaker", "zone": "Al Twar", "wo_type": "Inspection", "sla_priority": "P2-Planned", "status": "Pending", "crew": "Faisal Al Qubaisi", "countdown": 26, "health": 77.6, "risk": 15.0, "pf12": 5.3, "rationale": "Health=78.0; RUL=7m; Risk=15; P(fail12m)=5.3%"}], "total_wos": 1000, "p0_count": 158, "p1_count": 351}, "panel_c": {"type_labels": ["Repair", "Inspection", "Drone Survey", "Emergency", "Replacement"], "type_counts": [318, 355, 120, 130, 77], "type_completed": [50, 48, 19, 19, 11], "type_costs": [3043292.0, 3456570.0, 1176639.0, 1104095.0, 745226.0], "completed_total": 147, "sla_yes": 140, "sla_no": 7, "sla_rate": 95.2, "ftf_rate": 88.4, "avg_cost": 9526.0, "total_saidi": 7527.5}, "panel_d": {"risk_zone_labels": ["Moderate", "High", "Critical", "Low"], "risk_zone_counts": [370, 351, 158, 121], "job_status_labels": ["Pending", "En Route", "Assigned", "In Progress"], "job_status_counts": [328, 190, 274, 208], "top5_hotspot_zones": ["Al Twar", "Al Qusis Ind.", "Al Rashidiya", "Al Nahda", "Al Karama"], "top5_hotspot_counts": [32, 30, 27, 26, 24], "map_points": [{"id": "EV-FS-0008", "asset": "AST-OHL-0987", "zone": "Mirdif", "lat": 25.210772, "lon": 55.407029, "risk": "Critical", "status": "In Progress", "health": 25.4, "crew": "Ahmed Al Mansouri"}, {"id": "EV-FS-0009", "asset": "AST-SW-0498", "zone": "Al Qusais", "lat": 25.268448, "lon": 55.359923, "risk": "Critical", "status": "Pending", "health": 40.3, "crew": "Mohammed Al Rashid"}, {"id": "EV-FS-0012", "asset": "AST-RMU-0978", "zone": "Al Mizhar", "lat": 25.197746, "lon": 55.40477, "risk": "Critical", "status": "Pending", "health": 35.1, "crew": "Saeed Al Ketbi"}, {"id": "EV-FS-0013", "asset": "AST-DT-0256", "zone": "Al Nahda", "lat": 25.288619, "lon": 55.381047, "risk": "Critical", "status": "Pending", "health": 43.4, "crew": "Zayed Al Ameri"}, {"id": "EV-FS-0014", "asset": "AST-UGC-0418", "zone": "Al Qusais", "lat": 25.281131, "lon": 55.372469, "risk": "Critical", "status": "Assigned", "health": 43.4, "crew": "Rashid Al Shamsi"}, {"id": "EV-FS-0015", "asset": "AST-FP-0312", "zone": "Al Warqa", "lat": 25.232428, "lon": 55.41413, "risk": "Critical", "status": "Assigned", "health": 45.0, "crew": "Yusuf Al Dhaheri"}, {"id": "EV-FS-0016", "asset": "AST-UGC-0668", "zone": "Al Qusis Ind.", "lat": 25.284484, "lon": 55.347345, "risk": "Critical", "status": "En Route", "health": 46.0, "crew": "Khalid Bin Hamdan"}, {"id": "EV-FS-0017", "asset": "AST-UGC-0457", "zone": "Al Karama", "lat": 25.242829, "lon": 55.306682, "risk": "Critical", "status": "Pending", "health": 39.1, "crew": "Sultan Al Falasi"}, {"id": "EV-FS-0020", "asset": "AST-SW-0498", "zone": "Al Qusais", "lat": 25.26047, "lon": 55.381112, "risk": "Critical", "status": "In Progress", "health": 40.3, "crew": "Hamdan Al Mazrouei"}, {"id": "EV-FS-0022", "asset": "AST-RMU-0794", "zone": "Business Bay", "lat": 25.189563, "lon": 55.26038, "risk": "Critical", "status": "In Progress", "health": 48.9, "crew": "Hamdan Al Mazrouei"}, {"id": "EV-FS-0023", "asset": "AST-SW-0719", "zone": "Al Twar", "lat": 25.276575, "lon": 55.356971, "risk": "Critical", "status": "In Progress", "health": 48.9, "crew": "Ahmed Al Mansouri"}, {"id": "EV-FS-0024", "asset": "AST-PMT-0697", "zone": "Bur Dubai", "lat": 25.267637, "lon": 55.289401, "risk": "Critical", "status": "En Route", "health": 49.3, "crew": "Faisal Al Qubaisi"}, {"id": "EV-FS-0026", "asset": "AST-RMU-0773", "zone": "Al Barsha", "lat": 25.120646, "lon": 55.193161, "risk": "Critical", "status": "Pending", "health": 43.4, "crew": "Khalid Bin Hamdan"}, {"id": "EV-FS-0028", "asset": "AST-SW-0495", "zone": "Al Warqa", "lat": 25.216441, "lon": 55.419834, "risk": "Critical", "status": "Pending", "health": 44.2, "crew": "Hamdan Al Mazrouei"}, {"id": "EV-FS-0030", "asset": "AST-CB-0112", "zone": "Jumeirah", "lat": 25.218474, "lon": 55.257497, "risk": "Critical", "status": "En Route", "health": 44.9, "crew": "Khalid Bin Hamdan"}, {"id": "EV-FS-0032", "asset": "AST-CB-0206", "zone": "Al Barsha", "lat": 25.0965, "lon": 55.202679, "risk": "Critical", "status": "In Progress", "health": 45.2, "crew": "Abdulla Al Harthi"}, {"id": "EV-FS-0033", "asset": "AST-PMT-0675", "zone": "Al Qusis Ind.", "lat": 25.276768, "lon": 55.366333, "risk": "Critical", "status": "Assigned", "health": 37.6, "crew": "Ahmed Al Mansouri"}, {"id": "EV-FS-0035", "asset": "AST-MVC-0781", "zone": "Business Bay", "lat": 25.19225, "lon": 55.270963, "risk": "Critical", "status": "Pending", "health": 46.4, "crew": "Saeed Al Ketbi"}, {"id": "EV-FS-0036", "asset": "AST-RMU-0264", "zone": "Al Twar", "lat": 25.269564, "lon": 55.351673, "risk": "Critical", "status": "Pending", "health": 46.6, "crew": "Zayed Al Ameri"}, {"id": "EV-FS-0037", "asset": "AST-RMU-0264", "zone": "Al Twar", "lat": 25.268967, "lon": 55.370034, "risk": "Critical", "status": "En Route", "health": 46.6, "crew": "Abdulla Al Harthi"}, {"id": "EV-FS-0039", "asset": "AST-CAP-0648", "zone": "Al Nahda", "lat": 25.285663, "lon": 55.38491, "risk": "Critical", "status": "Pending", "health": 38.6, "crew": "Sultan Al Falasi"}, {"id": "EV-FS-0042", "asset": "AST-PMT-0225", "zone": "Al Karama", "lat": 25.240049, "lon": 55.295104, "risk": "Critical", "status": "En Route", "health": 47.8, "crew": "Saeed Al Ketbi"}, {"id": "EV-FS-0043", "asset": "AST-MVC-0730", "zone": "Business Bay", "lat": 25.177696, "lon": 55.268068, "risk": "Critical", "status": "Pending", "health": 48.1, "crew": "Faisal Al Qubaisi"}, {"id": "EV-FS-0044", "asset": "AST-LVC-0342", "zone": "Al Twar", "lat": 25.284764, "lon": 55.369719, "risk": "Critical", "status": "Pending", "health": 48.6, "crew": "Khalid Bin Hamdan"}, {"id": "EV-FS-0045", "asset": "AST-SW-0498", "zone": "Al Qusais", "lat": 25.265958, "lon": 55.361508, "risk": "Critical", "status": "Pending", "health": 40.3, "crew": "Mohammed Al Rashid"}, {"id": "EV-FS-0049", "asset": "AST-FP-0707", "zone": "Jumeirah", "lat": 25.198777, "lon": 55.277003, "risk": "Critical", "status": "In Progress", "health": 41.5, "crew": "Faisal Al Qubaisi"}, {"id": "EV-FS-0051", "asset": "AST-SW-0039", "zone": "Nad Al Sheba", "lat": 25.153697, "lon": 55.320487, "risk": "Critical", "status": "Pending", "health": 49.9, "crew": "Yusuf Al Dhaheri"}, {"id": "EV-FS-0055", "asset": "AST-MVC-0988", "zone": "Dubai Investments", "lat": 25.046437, "lon": 55.331142, "risk": "Critical", "status": "En Route", "health": 42.2, "crew": "Mohammed Al Rashid"}, {"id": "EV-FS-0066", "asset": "AST-PT-0163", "zone": "Al Dhafra", "lat": 23.499148, "lon": 53.960755, "risk": "Critical", "status": "Assigned", "health": 38.7, "crew": "Saeed Al Ketbi"}, {"id": "EV-FS-0070", "asset": "AST-RMU-0794", "zone": "Business Bay", "lat": 25.18376, "lon": 55.275752, "risk": "Critical", "status": "Assigned", "health": 48.9, "crew": "Khalid Bin Hamdan"}], "active_incidents": 509}, "panel_e": {"avail_labels": ["Available", "Deployed"], "avail_counts": [602, 398], "traffic_labels": ["Moderate", "Heavy", "Light"], "traffic_counts": [409, 196, 395], "avg_eta": 161.0, "avg_dist": 65.2, "optimal_route_pct": 39.5, "crew_labels": ["Abdulla", "Yusuf", "Faisal", "Omar", "Zayed", "Mohammed", "Khalid", "Hamdan", "Saeed", "Rashid", "Ahmed", "Sultan"], "crew_jobs": [94, 87, 75, 79, 76, 76, 80, 84, 79, 99, 81, 90], "crew_deployed": [35, 33, 27, 21, 25, 25, 29, 38, 33, 50, 39, 43], "total_crews": 12}, "panel_f": {"hstat_labels": ["Critical", "High", "Medium", "Low"], "hstat_counts": [146, 366, 365, 123], "overdue_count": 628, "immediate_count": 512, "avg_pf12": 38.5, "total_risk_exposure": 11902914.0, "top10_risk": [{"asset_id": "AST-CAP-0629", "type": "Capacitor Bank", "zone": "Al Qusis Ind.", "health": 48.4, "rul": 11, "pf12": 29.0, "overdue": "Yes", "action": "Immediate Emergency Dispatch", "sla": "P0-Emergency"}, {"asset_id": "AST-PMT-0661", "type": "Pole-Mounted Transformer", "zone": "Al Rashidiya", "health": 48.6, "rul": 36, "pf12": 29.2, "overdue": "No", "action": "Immediate Emergency Dispatch", "sla": "P0-Emergency"}, {"asset_id": "AST-DT-0815", "type": "Distribution Transformer", "zone": "Al Khawaneej", "health": 45.2, "rul": 46, "pf12": 27.1, "overdue": "Yes", "action": "Immediate Emergency Dispatch", "sla": "P0-Emergency"}, {"asset_id": "AST-LVC-0302", "type": "LV Cable", "zone": "Al Murabba", "health": 32.8, "rul": 53, "pf12": 19.7, "overdue": "No", "action": "Immediate Emergency Dispatch", "sla": "P0-Emergency"}, {"asset_id": "AST-MVC-0730", "type": "MV Cable", "zone": "Business Bay", "health": 48.1, "rul": 53, "pf12": 28.9, "overdue": "Yes", "action": "Immediate Emergency Dispatch", "sla": "P0-Emergency"}, {"asset_id": "AST-CAP-0442", "type": "Capacitor Bank", "zone": "Al Twar", "health": 46.9, "rul": 60, "pf12": 28.1, "overdue": "Yes", "action": "Immediate Emergency Dispatch", "sla": "P0-Emergency"}, {"asset_id": "AST-MVC-0617", "type": "MV Cable", "zone": "Al Warqa", "health": 48.3, "rul": 60, "pf12": 29.0, "overdue": "No", "action": "Immediate Emergency Dispatch", "sla": "P0-Emergency"}, {"asset_id": "AST-PMT-0407", "type": "Pole-Mounted Transformer", "zone": "Al Qusis Ind.", "health": 49.9, "rul": 64, "pf12": 29.9, "overdue": "No", "action": "Immediate Emergency Dispatch", "sla": "P0-Emergency"}, {"asset_id": "AST-CAP-0648", "type": "Capacitor Bank", "zone": "Al Nahda", "health": 38.6, "rul": 65, "pf12": 23.2, "overdue": "Yes", "action": "Immediate Emergency Dispatch", "sla": "P0-Emergency"}, {"asset_id": "AST-SW-0673", "type": "Switchgear Panel", "zone": "Al Karama", "health": 49.1, "rul": 68, "pf12": 29.5, "overdue": "Yes", "action": "Immediate Emergency Dispatch", "sla": "P0-Emergency"}], "urgent_type_labels": ["Capacitor Bank", "Pole-Mounted Transformer", "Distribution Transformer", "LV Cable", "MV Cable", "Switchgear Panel", "Overhead Line", "Underground Cable", "Ring Main Unit", "Feeder Pillar", "Power Transformer", "Circuit Breaker"], "urgent_type_counts": [23, 47, 43, 39, 53, 46, 36, 63, 30, 42, 43, 47]}, "panel_g": {"permit_labels": ["General Works Permit", "High Voltage Access Permit", "Live Working Permit"], "permit_counts": [609, 261, 130], "loto_required": 250, "avg_duration": 3.0, "high_risk_jobs": 547, "type_avg_dur_labels": ["Repair", "Inspection", "Drone Survey", "Emergency", "Replacement"], "type_avg_dur_values": [4.2, 2.1, 0.5, 1.6, 8.6], "top5_jobcards": [{"jc_id": "JC-FS-0032", "asset_id": "AST-CB-0206", "type": "Circuit Breaker", "zone": "Al Barsha", "sop": "SOP-CB-001", "permit": "High Voltage Access Permit", "loto": "Required", "risk_score": 18, "dur": 2.1, "cert": "HV Authorised Person ()", "status": "Critical"}, {"jc_id": "JC-FS-0038", "asset_id": "AST-PT-0166", "type": "Power Transformer", "zone": "Al Quoz", "sop": "SOP-PT-001", "permit": "Live Working Permit", "loto": "Required", "risk_score": 18, "dur": 1.8, "cert": "HV Authorised Person ()", "status": "High"}, {"jc_id": "JC-FS-0076", "asset_id": "AST-SW-0403", "type": "Switchgear Panel", "zone": "Al Warqa", "sop": "SOP-SWG-001", "permit": "General Works Permit", "loto": "Required", "risk_score": 18, "dur": 0.5, "cert": "HV Authorised Person ()", "status": "High"}, {"jc_id": "JC-FS-0089", "asset_id": "AST-SW-0495", "type": "Switchgear Panel", "zone": "Al Warqa", "sop": "SOP-SWG-001", "permit": "General Works Permit", "loto": "Required", "risk_score": 18, "dur": 3.6, "cert": "HV Authorised Person ()", "status": "Critical"}, {"jc_id": "JC-FS-0091", "asset_id": "AST-UGC-0219", "type": "Underground Cable", "zone": "Downtown", "sop": "SOP-UC-001", "permit": "General Works Permit", "loto": "Not Required", "risk_score": 18, "dur": 0.4, "cert": "LV Competent Person", "status": "High"}], "total_sops": 12}, "panel_h": {"sla_breach": 232, "sla_met": 768, "sla_rate": 76.8, "outages_prevented": 534, "near_miss": 52, "avg_saidi": 6.107, "avg_response": 1714.2, "customers_protected": 1080631, "inc_labels": ["Inspection", "Planned Maint", "Emergency", "Drone", "Corrective"], "inc_counts": [193, 318, 138, 102, 249], "hs_labels": ["Medium", "High", "Critical", "Low"], "hs_breach": [22.2, 26.2, 22.2, 19.0], "saidi_trend_months": ["2025-07", "2025-08", "2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06"], "saidi_trend_values": [4.43, 5.06, 3.23, 2.73, 2.96, 2.79, 2.81, 2.67, 2.76, 2.74, 3.15, 4.93]}, "panel_i": {"flight_status_labels": ["Completed", "Scheduled", "Aborted", "Partial"], "flight_status_counts": [725, 143, 69, 63], "gap_count": 145, "total_defects": 2900, "avg_assets_per_flight": 23.9, "severity_labels": ["Severe", "Moderate", "Minor", "Critical"], "severity_counts": [93, 152, 203, 61], "drone_labels": ["DJI M30T", "Autel EVO II Pro", "Skydio 2+", "DJI Matrice 300 RTK", "Freefly Alta X"], "drone_counts": [219, 198, 202, 186, 195], "zone_labels_i": ["Al Murabba", "Jumeirah", "Oud Metha", "Downtown", "Al Barsha South", "Al Ghusais", "Al Rashidiya", "Al Qusis Ind."], "zone_counts_i": [47, 43, 42, 40, 40, 38, 38, 37], "recent_flights": [{"id": "FLT-FS-0636", "zone": "Al Murabba", "status": "Completed", "sched": "31/03/2026", "defects": 6, "sev": "Severe", "drone": "Matrice", "gap": "No"}, {"id": "FLT-FS-0022", "zone": "Downtown", "status": "Completed", "sched": "31/05/2026", "defects": 2, "sev": "Minor", "drone": "Matrice", "gap": "No"}, {"id": "FLT-FS-0564", "zone": "Mirdif", "status": "Completed", "sched": "31/05/2026", "defects": 1, "sev": "Minor", "drone": "M30T", "gap": "No"}, {"id": "FLT-FS-0647", "zone": "Al Mankhool", "status": "Completed", "sched": "31/05/2026", "defects": 3, "sev": "Critical", "drone": "Alta", "gap": "No"}, {"id": "FLT-FS-0821", "zone": "Oud Metha", "status": "Completed", "sched": "31/05/2026", "defects": 7, "sev": "Moderate", "drone": "Alta", "gap": "No"}, {"id": "FLT-FS-0911", "zone": "Jumeirah", "status": "Completed", "sched": "31/05/2026", "defects": 3, "sev": "Minor", "drone": "Alta", "gap": "No"}, {"id": "FLT-FS-0606", "zone": "Mirdif", "status": "Completed", "sched": "31/12/2025", "defects": 0, "sev": "None", "drone": "EVO", "gap": "No"}, {"id": "FLT-FS-0771", "zone": "Al Barsha", "status": "Completed", "sched": "31/12/2025", "defects": 8, "sev": "Minor", "drone": "Matrice", "gap": "No"}], "completed_flights": 725}};
+const TEAL='#00B4A6',NAVY='#0D2D52',GOLD='#F5C518',GREEN='#3ECF8E',BLUE='#1A8FE3';
+const RED='#E53E3E',ORANGE='#ED8936',PURPLE='#805AD5';
+const PAL=[TEAL,NAVY,GOLD,GREEN,BLUE,RED,ORANGE,PURPLE,'#9F7AEA','#F6AD55','#68D391','#63B3ED'];
+
+function priorityColor(l){
+  if(l&&l.includes('P0'))return RED;if(l&&l.includes('P1'))return ORANGE;
+  if(l&&l.includes('P2'))return BLUE;return GREEN;
+}
+function riskColor(l){
+  return l==='Critical'?RED:l==='High'?ORANGE:l==='Moderate'?BLUE:GREEN;
+}
+function hsColor(l){
+  return l==='Critical'?RED:l==='High'?ORANGE:l==='Medium'?GOLD:GREEN;
+}
+
+let charts={};
+function dc(id){if(charts[id]){charts[id].destroy();delete charts[id];}}
+
+function showPanel(id,el){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.panel-nav button').forEach(b=>b.classList.remove('active'));
+  document.getElementById('panel-'+id).classList.add('active');
+  el.classList.add('active');
+  setTimeout(()=>initCharts(id),60);
+}
+
+function initCharts(p){
+  const a=D.panel_a,b=D.panel_b,c=D.panel_c,d=D.panel_d;
+  const e=D.panel_e,f=D.panel_f,g=D.panel_g,h=D.panel_h,i=D.panel_i;
+  const def={responsive:true,maintainAspectRatio:false};
+
+  if(p==='A'){
+    dc('A1');dc('A2');dc('A3');
+    charts.A1=new Chart(document.getElementById('chartA1'),{type:'line',
+      data:{labels:a.trend_dates,datasets:[
+        {label:'Crew Util %',data:a.trend_util,borderColor:TEAL,backgroundColor:TEAL+'22',tension:.3,pointRadius:0,fill:true},
+        {label:'SLA %',data:a.trend_sla,borderColor:GREEN,backgroundColor:GREEN+'22',tension:.3,pointRadius:0,fill:true}]},
+      options:{...def,plugins:{legend:{position:'top'}},scales:{y:{min:75,max:100}}}});
+    charts.A2=new Chart(document.getElementById('chartA2'),{type:'line',
+      data:{labels:a.trend_dates,datasets:[
+        {label:'SAIDI (mins)',data:a.trend_saidi,borderColor:RED,tension:.3,pointRadius:0,yAxisID:'y'},
+        {label:'Outages Prev',data:a.trend_out,borderColor:GOLD,tension:.3,pointRadius:0,yAxisID:'y2',borderDash:[4,2]}]},
+      options:{...def,plugins:{legend:{position:'top'}},
+        scales:{y:{position:'left',title:{display:true,text:'SAIDI mins'}},
+                y2:{position:'right',grid:{drawOnChartArea:false},title:{display:true,text:'Outages'}}}}});
+    charts.A3=new Chart(document.getElementById('chartA3'),{type:'bar',
+      data:{labels:a.trend_dates.slice(-15),datasets:[{label:'Outages Prevented',data:a.trend_out.slice(-15),backgroundColor:TEAL+'BB'}]},
+      options:{...def,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}});
+  }
+  if(p==='B'){
+    dc('B1');dc('B2');dc('B3');
+    charts.B1=new Chart(document.getElementById('chartB1'),{type:'doughnut',
+      data:{labels:b.priority_labels,datasets:[{data:b.priority_counts,backgroundColor:b.priority_labels.map(l=>priorityColor(l))}]},
+      options:{...def,plugins:{legend:{position:'bottom'}}}});
+    charts.B2=new Chart(document.getElementById('chartB2'),{type:'bar',
+      data:{labels:b.type_labels,datasets:[{label:'WOs',data:b.type_counts,backgroundColor:PAL}]},
+      options:{...def,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{beginAtZero:true}}}});
+    charts.B3=new Chart(document.getElementById('chartB3'),{type:'doughnut',
+      data:{labels:b.status_labels,datasets:[{data:b.status_counts,backgroundColor:PAL}]},
+      options:{...def,plugins:{legend:{position:'bottom'}}}});
+  }
+  if(p==='C'){
+    dc('C1');dc('C2');dc('C3');dc('C4');
+    charts.C1=new Chart(document.getElementById('chartC1'),{type:'bar',
+      data:{labels:c.type_labels,datasets:[{label:'Total WOs',data:c.type_counts,backgroundColor:TEAL+'BB'}]},
+      options:{...def,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}});
+    charts.C2=new Chart(document.getElementById('chartC2'),{type:'bar',
+      data:{labels:c.type_labels,datasets:[{label:'Cost AED',data:c.type_costs,backgroundColor:GOLD+'BB'}]},
+      options:{...def,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}});
+    charts.C3=new Chart(document.getElementById('chartC3'),{type:'bar',
+      data:{labels:c.type_labels,datasets:[
+        {label:'Total',data:c.type_counts,backgroundColor:NAVY+'99'},
+        {label:'Completed',data:c.type_completed,backgroundColor:GREEN+'BB'}]},
+      options:{...def,plugins:{legend:{position:'top'}},scales:{y:{beginAtZero:true}}}});
+    charts.C4=new Chart(document.getElementById('chartC4'),{type:'doughnut',
+      data:{labels:['SLA Met','SLA Breach','FTF Yes','FTF No'],
+        datasets:[{data:[c.sla_yes,c.sla_no,Math.round(c.ftf_rate*10),Math.round((100-c.ftf_rate)*10)],
+          backgroundColor:[GREEN,RED,TEAL,ORANGE]}]},
+      options:{...def,plugins:{legend:{position:'bottom'}}}});
+  }
+  if(p==='D'){
+    dc('D1');dc('D2');dc('D3');
+    if(!window._mapD){
+      window._mapD=L.map('field-map').setView([25.1972,55.2744],10);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:18}).addTo(window._mapD);
+      const rc={Critical:'#E53E3E',High:'#ED8936',Moderate:'#1A8FE3',Low:'#3ECF8E'};
+      d.map_points.forEach(pt=>{
+        L.circleMarker([pt.lat,pt.lon],{radius:9,fillColor:rc[pt.risk]||'#718096',color:'#fff',weight:2,opacity:1,fillOpacity:.85})
+         .bindPopup(`<strong>${pt.asset}</strong><br>Zone: ${pt.zone}<br>Risk: <strong style="color:${rc[pt.risk]}">${pt.risk}</strong><br>Status: ${pt.status}<br>Health: ${pt.health}<br>Crew: ${pt.crew}`)
+         .addTo(window._mapD);
+      });
+      setTimeout(()=>window._mapD.invalidateSize(),300);
+    }
+    charts.D1=new Chart(document.getElementById('chartD1'),{type:'doughnut',
+      data:{labels:d.risk_zone_labels,datasets:[{data:d.risk_zone_counts,backgroundColor:d.risk_zone_labels.map(l=>riskColor(l))}]},
+      options:{...def,plugins:{legend:{position:'bottom'}}}});
+    charts.D2=new Chart(document.getElementById('chartD2'),{type:'doughnut',
+      data:{labels:d.job_status_labels,datasets:[{data:d.job_status_counts,backgroundColor:PAL}]},
+      options:{...def,plugins:{legend:{position:'bottom'}}}});
+    charts.D3=new Chart(document.getElementById('chartD3'),{type:'bar',
+      data:{labels:d.top5_hotspot_zones,datasets:[{label:'High/Critical Events',data:d.top5_hotspot_counts,backgroundColor:RED+'BB'}]},
+      options:{...def,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{beginAtZero:true}}}});
+  }
+  if(p==='E'){
+    dc('E1');dc('E2');dc('E3');
+    charts.E1=new Chart(document.getElementById('chartE1'),{type:'doughnut',
+      data:{labels:e.avail_labels,datasets:[{data:e.avail_counts,backgroundColor:[GREEN,ORANGE,RED]}]},
+      options:{...def,plugins:{legend:{position:'bottom'}}}});
+    charts.E2=new Chart(document.getElementById('chartE2'),{type:'doughnut',
+      data:{labels:e.traffic_labels,datasets:[{data:e.traffic_counts,backgroundColor:[GREEN,GOLD,RED]}]},
+      options:{...def,plugins:{legend:{position:'bottom'}}}});
+    charts.E3=new Chart(document.getElementById('chartE3'),{type:'bar',
+      data:{labels:e.crew_labels,datasets:[
+        {label:'Total Jobs',data:e.crew_jobs,backgroundColor:NAVY+'99'},
+        {label:'Deployed',data:e.crew_deployed,backgroundColor:TEAL+'BB'}]},
+      options:{...def,plugins:{legend:{position:'top'}},scales:{y:{beginAtZero:true}}}});
+  }
+  if(p==='F'){
+    dc('F1');dc('F2');
+    charts.F1=new Chart(document.getElementById('chartF1'),{type:'doughnut',
+      data:{labels:f.hstat_labels,datasets:[{data:f.hstat_counts,backgroundColor:f.hstat_labels.map(l=>hsColor(l))}]},
+      options:{...def,plugins:{legend:{position:'bottom'}}}});
+    charts.F2=new Chart(document.getElementById('chartF2'),{type:'bar',
+      data:{labels:f.urgent_type_labels,datasets:[{label:'Immediate Action',data:f.urgent_type_counts,backgroundColor:RED+'BB'}]},
+      options:{...def,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{beginAtZero:true}}}});
+  }
+  if(p==='G'){
+    dc('G1');dc('G2');
+    charts.G1=new Chart(document.getElementById('chartG1'),{type:'doughnut',
+      data:{labels:g.permit_labels,datasets:[{data:g.permit_counts,backgroundColor:[RED,ORANGE,GREEN]}]},
+      options:{...def,plugins:{legend:{position:'bottom'}}}});
+    charts.G2=new Chart(document.getElementById('chartG2'),{type:'bar',
+      data:{labels:g.type_avg_dur_labels,datasets:[{label:'Avg Hrs',data:g.type_avg_dur_values,backgroundColor:PAL}]},
+      options:{...def,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}});
+  }
+  if(p==='H'){
+    dc('H1');dc('H2');dc('H3');dc('H4');
+    charts.H1=new Chart(document.getElementById('chartH1'),{type:'line',
+      data:{labels:h.saidi_trend_months,datasets:[{label:'Avg SAIDI (mins)',data:h.saidi_trend_values,borderColor:RED,backgroundColor:RED+'22',fill:true,tension:.3}]},
+      options:{...def,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}});
+    charts.H2=new Chart(document.getElementById('chartH2'),{type:'bar',
+      data:{labels:h.hs_labels,datasets:[{label:'SLA Breach %',data:h.hs_breach,backgroundColor:h.hs_labels.map(l=>hsColor(l))}]},
+      options:{...def,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,max:100}}}});
+    charts.H3=new Chart(document.getElementById('chartH3'),{type:'doughnut',
+      data:{labels:h.inc_labels,datasets:[{data:h.inc_counts,backgroundColor:PAL}]},
+      options:{...def,plugins:{legend:{position:'bottom'}}}});
+    charts.H4=new Chart(document.getElementById('chartH4'),{type:'doughnut',
+      data:{labels:['SLA Met','SLA Breach'],datasets:[{data:[h.sla_met,h.sla_breach],backgroundColor:[GREEN,RED]}]},
+      options:{...def,plugins:{legend:{position:'bottom'}}}});
+  }
+  if(p==='I'){
+    dc('I1');dc('I2');dc('I3');dc('I4');
+    charts.I1=new Chart(document.getElementById('chartI1'),{type:'doughnut',
+      data:{labels:i.flight_status_labels,datasets:[{data:i.flight_status_counts,backgroundColor:[GREEN,ORANGE,RED,BLUE]}]},
+      options:{...def,plugins:{legend:{position:'bottom'}}}});
+    charts.I2=new Chart(document.getElementById('chartI2'),{type:'doughnut',
+      data:{labels:i.severity_labels,datasets:[{data:i.severity_counts,backgroundColor:[ORANGE,GOLD,RED,PURPLE]}]},
+      options:{...def,plugins:{legend:{position:'bottom'}}}});
+    charts.I3=new Chart(document.getElementById('chartI3'),{type:'doughnut',
+      data:{labels:i.drone_labels,datasets:[{data:i.drone_counts,backgroundColor:PAL}]},
+      options:{...def,plugins:{legend:{position:'bottom',labels:{font:{size:9}}}}}});
+    charts.I4=new Chart(document.getElementById('chartI4'),{type:'bar',
+      data:{labels:i.zone_labels_i,datasets:[{label:'Flights',data:i.zone_counts_i,backgroundColor:TEAL+'BB'}]},
+      options:{...def,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{beginAtZero:true}}}});
+  }
+}
+window.addEventListener('load',()=>initCharts('A'));
+</script>
+</body></html>

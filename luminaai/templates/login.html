@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="auth-card">
+  <div>
+    <p class="eyebrow">Asset Intelligence Command Centre</p>
+    <h1>Sign in to Luminaai</h1>
+    <p class="muted">Secure access to asset health, predictive maintenance, risk, coverage, CAPEX, and compliance dashboards.</p>
+  </div>
+  <form method="post" class="form">
+    <label>Email
+      <input name="email" type="email" autocomplete="email" required autofocus>
+    </label>
+    <label>Password
+      <input name="password" type="password" autocomplete="current-password" required>
+    </label>
+    <button type="submit">Sign in</button>
+    <p class="hint">Default admin: admin@luminaai.local / Admin@12345</p>
+  </form>
+</section>
+{% endblock %}
