@@ -5,6 +5,8 @@ from pathlib import Path
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+MASTER_WORKBOOK = BASE_DIR / "LuminaAI_Master_Data_AllPillars_V1.xlsx"
+LEGACY_WORKBOOK = BASE_DIR / "Luminaai_ASSET H Panel_Sample_Data_1000.xlsx"
 
 
 class Config:
@@ -17,7 +19,7 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     EXCEL_SOURCE_PATH = os.environ.get(
         "EXCEL_SOURCE_PATH",
-        str(BASE_DIR / "Luminaai_ASSET H Panel_Sample_Data_1000.xlsx"),
+        str(MASTER_WORKBOOK if MASTER_WORKBOOK.exists() else LEGACY_WORKBOOK),
     )
     PDF_SOURCE_PATH = os.environ.get("PDF_SOURCE_PATH", str(BASE_DIR / "Asset .pdf"))
     ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@luminaai.local")

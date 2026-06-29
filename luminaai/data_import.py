@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+import re
 from pathlib import Path
 from typing import Any
 
@@ -32,8 +33,12 @@ def _clean_cell(value: Any) -> Any:
 
 
 def _panel_code(sheet_name: str) -> str:
-    if "KPI" in sheet_name.upper():
+    normalized = sheet_name.upper()
+    if "KPI" in normalized:
         return "KPI"
+    pillar_match = re.match(r"F(\d{2})[_\s-]", normalized)
+    if pillar_match:
+        return f"F{pillar_match.group(1)}"
     parts = sheet_name.replace("—", "-").split()
     if "Panel" in parts and len(parts) > parts.index("Panel") + 1:
         return parts[parts.index("Panel") + 1].strip("-").upper()
@@ -47,6 +52,12 @@ def import_workbook(path: str | Path) -> dict[str, int]:
 
     wb = openpyxl.load_workbook(workbook_path, read_only=True, data_only=True)
     stats: dict[str, int] = {}
+    workbook_sheets = set(wb.sheetnames)
+
+    for dataset in Dataset.query.all():
+        if dataset.sheet_name not in workbook_sheets:
+            db.session.delete(dataset)
+    db.session.flush()
 
     for ws in wb.worksheets:
         rows = list(ws.iter_rows(values_only=True))

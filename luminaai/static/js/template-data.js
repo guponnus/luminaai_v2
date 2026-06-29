@@ -121,6 +121,35 @@
     return rows;
   }
 
+  function panelWorkbookCode(panel) {
+    const match = (panel.id || "").match(/^(\d{2})_/);
+    return match ? `F${match[1]}` : null;
+  }
+
+  function workbookExportRows(workbook) {
+    if (!workbook?.records?.length) {
+      return [];
+    }
+    return workbook.records.flatMap((record, index) =>
+      Object.entries(record).map(([metric, value]) => ({
+        Section: "Master Workbook",
+        Item: `${workbook.sheetName} Row ${index + 1}`,
+        Metric: metric,
+        Value: value ?? "",
+      }))
+    );
+  }
+
+  function fetchWorkbookRows(panel) {
+    const code = panelWorkbookCode(panel);
+    if (!code) {
+      return Promise.resolve(null);
+    }
+    return fetch(`/api/datasets/panel/${code}?limit=1000`)
+      .then((response) => (response.ok ? response.json() : null))
+      .catch(() => null);
+  }
+
   function escapeCsv(value) {
     const raw = String(value ?? "");
     return /[",\n]/.test(raw) ? `"${raw.replace(/"/g, '""')}"` : raw;
@@ -153,7 +182,20 @@
       });
   }
 
-  function renderModal(panel, rows) {
+  function workbookTableHtml(workbook) {
+    if (!workbook?.records?.length) {
+      return '<div class="luminaai-empty">No master workbook rows were available for this panel.</div>';
+    }
+    const headers = Object.keys(workbook.records[0] || {});
+    const previewRows = workbook.records.slice(0, 100);
+    return `<section class="luminaai-modal-section"><h3>${workbook.sheetName} - Master Workbook Data (${number(workbook.recordCount)} rows)</h3><div class="luminaai-modal-table-wrap"><table><thead><tr>${headers
+      .map((header) => `<th>${header}</th>`)
+      .join("")}</tr></thead><tbody>${previewRows
+      .map((row) => `<tr>${headers.map((header) => `<td>${row[header] ?? ""}</td>`).join("")}</tr>`)
+      .join("")}</tbody></table></div></section>`;
+  }
+
+  function renderModal(panel, rows, workbook) {
     const modal = document.querySelector(".luminaai-modal-backdrop");
     const kpis = rows.filter((row) => row.Section === "KPI").slice(0, 12);
     const tableSource = tableRows(panel);
@@ -171,7 +213,8 @@
       : '<div class="luminaai-empty">No tabular rows were present in this panel. KPI and chart data are still available in the downloads.</div>';
 
     modal.querySelector(".luminaai-modal-hd h2").textContent = panelTitle(panel);
-    modal.querySelector(".luminaai-modal-hd p").textContent = `${activePillarName(panel)} - ${number(rows.length)} exported data points`;
+    const exportRows = [...rows, ...workbookExportRows(workbook)];
+    modal.querySelector(".luminaai-modal-hd p").textContent = `${activePillarName(panel)} - ${number(exportRows.length)} exported data points`;
     modal.querySelector(".luminaai-modal-body").innerHTML = `
       <section class="luminaai-modal-section">
         <h3>Panel KPIs</h3>
@@ -183,10 +226,11 @@
           }
         </div>
       </section>
+      ${workbookTableHtml(workbook)}
       ${tableHtml}
     `;
     modal.dataset.filename = `${panel.id || "luminaai-panel"}-data`;
-    modal._rows = rows;
+    modal._rows = exportRows;
     modal.classList.add("open");
   }
 
@@ -236,7 +280,17 @@
       panel.prepend(tools);
       tools.querySelector("button").addEventListener("click", (event) => {
         event.stopPropagation();
-        renderModal(panel, collectPanelRows(panel));
+        const button = event.currentTarget;
+        button.textContent = "Loading data...";
+        button.disabled = true;
+        fetchWorkbookRows(panel)
+          .then((workbook) => {
+            renderModal(panel, collectPanelRows(panel), workbook);
+          })
+          .finally(() => {
+            button.textContent = "View data / export";
+            button.disabled = false;
+          });
       });
     });
   }
