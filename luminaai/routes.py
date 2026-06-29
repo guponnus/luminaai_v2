@@ -289,6 +289,35 @@ def api_dataset_by_panel(panel_code: str):
     return jsonify(_dataset_payload(dataset, limit=limit))
 
 
+@dashboard_bp.route("/api/entities/<entity_id>")
+@login_required
+def api_entity_lookup(entity_id: str):
+    entity = entity_id.strip()
+    if len(entity) < 3:
+        abort(400)
+
+    matches = []
+    for dataset in Dataset.query.order_by(Dataset.panel_code, Dataset.sheet_name).all():
+        for record in PanelRecord.query.filter_by(dataset_id=dataset.id).order_by(PanelRecord.row_number).all():
+            matched_fields = [
+                key
+                for key, value in record.data.items()
+                if value is not None and str(value).strip().lower() == entity.lower()
+            ]
+            if matched_fields:
+                matches.append(
+                    {
+                        "datasetId": dataset.id,
+                        "sheetName": dataset.sheet_name,
+                        "panelCode": dataset.panel_code,
+                        "rowNumber": record.row_number,
+                        "matchedFields": matched_fields,
+                        "data": record.data,
+                    }
+                )
+    return jsonify({"entityId": entity, "matchCount": len(matches), "matches": matches})
+
+
 @dashboard_bp.route("/api/export/xlsx", methods=["POST"])
 @login_required
 def api_export_xlsx():
